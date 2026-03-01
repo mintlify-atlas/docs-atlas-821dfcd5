@@ -1,0 +1,330 @@
+---
+title: 'Context'
+description: 'Command execution context providing access to sender, arguments, and parsing utilities'
+---
+
+The `Context` class represents the execution context of a command, providing access to the command sender, arguments, and utilities for parsing arguments with custom providers.
+
+## Overview
+
+Every command method and provider receives a `Context` instance, which contains:
+- The command sender who executed the command
+- Raw string arguments passed to the command
+- The command label that was used
+- Access to the Blade instance
+- Utilities for parsing arguments at specific indices
+
+## Class Definition
+
+```java
+public final class Context
+```
+
+**Package:** `me.vaperion.blade.context`
+
+## Core Methods
+
+### Accessing Arguments
+
+<ResponseField name="arguments()" type="String[]">
+  Returns all provided arguments as a string array.
+  
+  ```java
+  String[] args = context.arguments();
+  // args = ["player123", "10", "true"]
+  ```
+</ResponseField>
+
+<ResponseField name="argument(int index)" type="String">
+  Returns the argument at the specified index, or `null` if not present.
+  
+  <ParamField path="index" type="int" required>
+    The zero-based index of the argument
+  </ParamField>
+  
+  ```java
+  String firstArg = context.argument(0); // "player123"
+  String missing = context.argument(10);  // null
+  ```
+</ResponseField>
+
+### Parsing Arguments
+
+The Context class provides several overloaded methods for parsing arguments with custom providers.
+
+<ResponseField name="parseArgument(int index, Class<T> argumentClass)" type="T">
+  Parses the argument at the specified index using the registered provider for the given class.
+  
+  <ParamField path="index" type="int" required>
+    The zero-based index of the argument to parse
+  </ParamField>
+  
+  <ParamField path="argumentClass" type="Class<T>" required>
+    The target type to parse the argument into
+  </ParamField>
+  
+  **Returns:** The parsed argument, or `null` if not present
+  
+  **Throws:**
+  - `IllegalArgumentException` - if no provider is registered for the class
+  - `BladeParseError` - if parsing fails
+  - `BladeImplementationError` - if the provider has implementation issues
+  
+  ```java
+  // Parse the first argument as a Player
+  Player target = context.parseArgument(0, Player.class);
+  
+  // Parse the second argument as an Integer
+  Integer amount = context.parseArgument(1, Integer.class);
+  ```
+</ResponseField>
+
+<ResponseField name="parseArgument(int index, Class<T> argumentClass, String defaultValue)" type="T">
+  Parses the argument at the specified index with a default value if not present.
+  
+  <ParamField path="index" type="int" required>
+    The zero-based index of the argument to parse
+  </ParamField>
+  
+  <ParamField path="argumentClass" type="Class<T>" required>
+    The target type to parse the argument into
+  </ParamField>
+  
+  <ParamField path="defaultValue" type="String" required>
+    The default value to use if the argument is not present
+  </ParamField>
+  
+  **Returns:** The parsed argument, or the parsed default value if not present
+  
+  ```java
+  // Use "10" as default if argument not provided
+  Integer amount = context.parseArgument(1, Integer.class, "10");
+  ```
+</ResponseField>
+
+<ResponseField name="parseArgument(int index, ArgumentProvider<T> provider)" type="T">
+  Parses the argument using a specific provider instance.
+  
+  <ParamField path="index" type="int" required>
+    The zero-based index of the argument to parse
+  </ParamField>
+  
+  <ParamField path="provider" type="ArgumentProvider<T>" required>
+    The provider to use for parsing
+  </ParamField>
+  
+  **Returns:** The parsed argument, or `null` if not present
+  
+  ```java
+  ArgumentProvider<Player> customProvider = new CustomPlayerProvider();
+  Player target = context.parseArgument(0, customProvider);
+  ```
+</ResponseField>
+
+<ResponseField name="parseArgument(int index, ArgumentProvider<T> provider, String defaultValue)" type="T">
+  Parses the argument using a specific provider with a default value.
+  
+  <ParamField path="index" type="int" required>
+    The zero-based index of the argument to parse
+  </ParamField>
+  
+  <ParamField path="provider" type="ArgumentProvider<T>" required>
+    The provider to use for parsing
+  </ParamField>
+  
+  <ParamField path="defaultValue" type="String" required>
+    The default value to use if the argument is not present
+  </ParamField>
+  
+  **Returns:** The parsed argument, or the parsed default value if not present
+</ResponseField>
+
+### Accessing Context Properties
+
+<ResponseField name="sender()" type="Sender<?>">
+  Returns the sender who executed the command.
+  
+  ```java
+  Sender<?> sender = context.sender();
+  String senderName = sender.name();
+  boolean hasPermission = sender.hasPermission("admin.use");
+  
+  // Parse to platform-specific type
+  Player player = sender.parseAs(Player.class);
+  if (player != null) {
+      player.sendMessage("Hello!");
+  }
+  ```
+  
+  See [Sender](#sender-interface) for more details.
+</ResponseField>
+
+<ResponseField name="label()" type="String">
+  Returns the command label that was used to invoke the command.
+  
+  ```java
+  String label = context.label();
+  // If command was invoked as "/tp" instead of "/teleport"
+  // label would be "tp"
+  ```
+</ResponseField>
+
+<ResponseField name="blade()" type="Blade">
+  Returns the Blade instance managing this command.
+  
+  ```java
+  Blade blade = context.blade();
+  ```
+</ResponseField>
+
+## Sender Interface
+
+The `Sender<T>` interface wraps platform-specific sender types.
+
+### Sender Methods
+
+<ResponseField name="rawSender()" type="T">
+  Returns the raw platform instance of the sender (e.g., Player, CommandSource).
+  
+  ```java
+  Object raw = context.sender().rawSender();
+  ```
+</ResponseField>
+
+<ResponseField name="name()" type="String">
+  Returns the name of the sender.
+  
+  ```java
+  String name = context.sender().name();
+  ```
+</ResponseField>
+
+<ResponseField name="hasPermission(String permission)" type="boolean">
+  Checks if the sender has a specific permission.
+  
+  <ParamField path="permission" type="String" required>
+    The permission node to check
+  </ParamField>
+  
+  ```java
+  if (context.sender().hasPermission("mycommand.admin")) {
+      // Execute admin logic
+  }
+  ```
+</ResponseField>
+
+<ResponseField name="parseAs(Class<S> clazz)" type="S">
+  Attempts to convert the sender to the specified type.
+  
+  <ParamField path="clazz" type="Class<S>" required>
+    The target class to convert to
+  </ParamField>
+  
+  **Returns:** The converted sender if successful, `null` otherwise
+  
+  ```java
+  Player player = context.sender().parseAs(Player.class);
+  if (player != null) {
+      // Sender is a player
+  }
+  
+  ConsoleCommandSender console = context.sender().parseAs(ConsoleCommandSender.class);
+  if (console != null) {
+      // Sender is console
+  }
+  ```
+</ResponseField>
+
+## Usage in Providers
+
+The `Context` is commonly used in argument providers to access the command context:
+
+```java
+public class PlayerProvider implements ArgumentProvider<Player> {
+    @Override
+    public Player provide(@NotNull Context ctx, @NotNull InputArgument arg) {
+        String value = arg.requireValue();
+        
+        // Access the sender
+        Sender<?> sender = ctx.sender();
+        
+        // Use context to find player
+        Player target = Bukkit.getPlayer(value);
+        if (target == null) {
+            throw BladeParseError.recoverable(
+                "Player '" + value + "' not found."
+            );
+        }
+        
+        return target;
+    }
+    
+    @Override
+    public void suggest(@NotNull Context ctx,
+                       @NotNull InputArgument arg,
+                       @NotNull SuggestionsBuilder suggestions) {
+        // Use context to get online players
+        for (Player player : Bukkit.getOnlinePlayers()) {
+            suggestions.suggest(player.getName());
+        }
+    }
+}
+```
+
+## Usage in Commands
+
+Every command method receives a `Context` parameter:
+
+```java
+@Command("teleport")
+public void teleportCommand(Context context, Player target) {
+    // Access the sender
+    Player sender = context.sender().parseAs(Player.class);
+    if (sender == null) {
+        return; // Not a player
+    }
+    
+    // Get the command label used
+    String label = context.label(); // "tp" or "teleport"
+    
+    // Teleport
+    sender.teleport(target.getLocation());
+    sender.sendMessage("Teleported to " + target.getName());
+}
+```
+
+## Advanced: Manual Argument Parsing
+
+You can manually parse arguments in commands using the parse methods:
+
+```java
+@Command("custom")
+public void customCommand(Context context) {
+    // Get raw arguments
+    String[] args = context.arguments();
+    
+    if (args.length < 2) {
+        context.sender().parseAs(Player.class)
+            .sendMessage("Usage: /custom <player> <amount>");
+        return;
+    }
+    
+    // Parse arguments manually
+    Player target = context.parseArgument(0, Player.class);
+    Integer amount = context.parseArgument(1, Integer.class, "10");
+    
+    if (target == null) {
+        // Parsing failed
+        return;
+    }
+    
+    // Use parsed values
+    target.getInventory().addItem(new ItemStack(Material.DIAMOND, amount));
+}
+```
+
+## See Also
+
+- [InputArgument](/api/input-argument) - Represents a single command argument
+- [ArgumentProvider](/api/argument-provider) - Interface for creating custom argument types
+- [Suggestions](/api/suggestions) - Tab completion builders

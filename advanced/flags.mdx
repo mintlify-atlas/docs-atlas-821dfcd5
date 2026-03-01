@@ -1,0 +1,355 @@
+---
+title: Command Flags
+description: Use the @Flag annotation for short and long flags, required flags
+---
+
+Blade supports command flags (also known as options or switches) that allow users to modify command behavior with optional or required parameters.
+
+## The @Flag Annotation
+
+The `@Flag` annotation defines a flag parameter:
+
+```java
+public @interface Flag {
+    /**
+     * The character value of the flag that can be used as -f.
+     */
+    char value();
+
+    /**
+     * The long flag name that can be used as --longName.
+     */
+    @NotNull
+    String longName() default "";
+
+    /**
+     * The description of the flag.
+     */
+    @NotNull
+    String description() default "";
+
+    /**
+     * Whether the flag is required or not.
+     */
+    boolean required() default false;
+}
+```
+
+## Basic Boolean Flags
+
+The simplest flags are boolean switches:
+
+```java
+@Command("announce")
+public void announce(
+    @Sender Player sender,
+    @Name("message") @Greedy String message,
+    @Flag(value = 's', description = "Send silently without sound") boolean silent
+) {
+    for (Player player : Bukkit.getOnlinePlayers()) {
+        player.sendMessage(message);
+        
+        if (!silent) {
+            player.playSound(player.getLocation(), Sound.ENTITY_PLAYER_LEVELUP, 1.0f, 1.0f);
+        }
+    }
+}
+```
+
+Usage:
+```
+/announce Hello everyone!           # silent = false
+/announce -s Hello everyone!        # silent = true
+/announce Hello everyone! -s        # silent = true (flags can be anywhere)
+```
+
+## Short Flags
+
+Short flags use a single character preceded by `-`:
+
+```java
+@Command("pay")
+public void pay(
+    @Sender Player sender,
+    @Name("player") Player target,
+    @Name("amount") @Range(min = 1) int amount,
+    @Flag('s') boolean silent,
+    @Flag('f') boolean force
+) {
+    if (!force && economy.getBalance(sender) < amount) {
+        sender.sendMessage("Insufficient funds!");
+        return;
+    }
+    
+    economy.transfer(sender, target, amount);
+    
+    if (!silent) {
+        target.sendMessage("You received $" + amount + " from " + sender.getName());
+        sender.sendMessage("You sent $" + amount + " to " + target.getName());
+    }
+}
+```
+
+Usage:
+```
+/pay Steve 100              # silent = false, force = false
+/pay Steve 100 -s           # silent = true, force = false
+/pay Steve 100 -f           # silent = false, force = true
+/pay Steve 100 -s -f        # silent = true, force = true
+/pay Steve 100 -sf          # silent = true, force = true (combined)
+```
+
+## Long Flags
+
+Long flags use descriptive names preceded by `--`:
+
+```java
+@Command("backup")
+public void backup(
+    @Sender CommandSender sender,
+    @Flag(value = 'c', longName = "compress", description = "Compress the backup") boolean compress,
+    @Flag(value = 'u', longName = "upload", description = "Upload to cloud storage") boolean upload
+) {
+    sender.sendMessage("Creating backup...");
+    
+    File backup = backupManager.create(compress);
+    
+    if (upload) {
+        cloudStorage.upload(backup);
+        sender.sendMessage("Backup uploaded to cloud!");
+    } else {
+        sender.sendMessage("Backup saved locally!");
+    }
+}
+```
+
+Usage:
+```
+/backup                     # compress = false, upload = false
+/backup -c                  # compress = true, upload = false
+/backup --compress          # compress = true, upload = false
+/backup -u                  # compress = false, upload = true
+/backup --upload            # compress = false, upload = true
+/backup -c -u               # Both true
+/backup --compress --upload # Both true
+/backup -cu                 # Both true (combined short flags)
+```
+
+## Flags with Values
+
+Flags can have values of any type that has an `ArgumentProvider`:
+
+```java
+@Command("teleport")
+public void teleport(
+    @Sender Player sender,
+    @Name("location") Location location,
+    @Flag(value = 'p', longName = "player", description = "Teleport another player") Player targetPlayer
+) {
+    Player playerToTeleport = targetPlayer != null ? targetPlayer : sender;
+    
+    playerToTeleport.teleport(location);
+    sender.sendMessage("Teleported " + playerToTeleport.getName() + " to " + location);
+}
+```
+
+Usage:
+```
+/teleport 100 64 200                    # Teleports sender
+/teleport 100 64 200 -p Steve           # Teleports Steve
+/teleport 100 64 200 --player Steve     # Teleports Steve
+```
+
+## Required Flags
+
+Make flags mandatory with `required = true`:
+
+```java
+@Command("execute")
+public void execute(
+    @Sender Player sender,
+    @Flag(value = 'c', longName = "confirm", required = true, description = "Confirm execution") boolean confirm
+) {
+    if (!confirm) {
+        sender.sendMessage("This should never happen!");
+        return;
+    }
+    
+    // Execute dangerous operation
+    sender.sendMessage("Operation executed!");
+}
+```
+
+Usage:
+```
+/execute                # Error: -c/--confirm is required
+/execute -c             # Success
+/execute --confirm      # Success
+```
+
+## Complex Example
+
+Here's a comprehensive example using multiple flag types:
+
+```java
+@Command("give")
+@Permission("myplugin.give")
+public void give(
+    @Sender Player sender,
+    @Name("player") Player target,
+    @Name("item") Material material,
+    @Name("amount") @Range(min = 1, max = 64) int amount,
+    @Flag(value = 's', longName = "silent", description = "Don't notify the player") boolean silent,
+    @Flag(value = 'e', longName = "enchant", description = "Enchantment to apply") Enchantment enchantment,
+    @Flag(value = 'l', longName = "level", description = "Enchantment level") @Range(min = 1, max = 10) Integer level,
+    @Flag(value = 'n', longName = "name", description = "Custom item name") String customName
+) {
+    ItemStack item = new ItemStack(material, amount);
+    
+    // Apply enchantment if provided
+    if (enchantment != null) {
+        int enchantLevel = level != null ? level : 1;
+        item.addUnsafeEnchantment(enchantment, enchantLevel);
+    }
+    
+    // Apply custom name if provided
+    if (customName != null) {
+        ItemMeta meta = item.getItemMeta();
+        meta.setDisplayName(customName);
+        item.setItemMeta(meta);
+    }
+    
+    // Give item
+    target.getInventory().addItem(item);
+    
+    // Send messages
+    sender.sendMessage("Gave " + amount + " " + material + " to " + target.getName());
+    
+    if (!silent) {
+        target.sendMessage("You received " + amount + " " + material + "!");
+    }
+}
+```
+
+Usage:
+```
+/give Steve DIAMOND_SWORD 1
+/give Steve DIAMOND_SWORD 1 -s
+/give Steve DIAMOND_SWORD 1 --silent
+/give Steve DIAMOND_SWORD 1 -e SHARPNESS -l 5
+/give Steve DIAMOND_SWORD 1 --enchant SHARPNESS --level 5
+/give Steve DIAMOND_SWORD 1 -n "Legendary Sword"
+/give Steve DIAMOND_SWORD 1 -e SHARPNESS -l 5 -n "Legendary Sword" -s
+```
+
+## Flag Positioning
+
+Flags can appear anywhere in the command:
+
+```java
+@Command("test")
+public void test(
+    @Sender Player sender,
+    @Name("arg1") String arg1,
+    @Name("arg2") int arg2,
+    @Flag('f') boolean flag
+) {
+    sender.sendMessage("arg1=" + arg1 + ", arg2=" + arg2 + ", flag=" + flag);
+}
+```
+
+All of these are valid:
+```
+/test hello 42 -f
+/test -f hello 42
+/test hello -f 42
+```
+
+## Combining Short Flags
+
+Multiple short boolean flags can be combined:
+
+```java
+@Command("config")
+public void config(
+    @Sender Player sender,
+    @Flag('r') boolean reload,
+    @Flag('s') boolean save,
+    @Flag('v') boolean verbose
+) {
+    if (reload) config.reload();
+    if (save) config.save();
+    if (verbose) sender.sendMessage("Config operations complete");
+}
+```
+
+Usage:
+```
+/config -r              # reload = true
+/config -s              # save = true  
+/config -rs             # reload = true, save = true
+/config -rsv            # All three = true
+/config -r -s -v        # All three = true (also valid)
+```
+
+## Default Values
+
+Flags are optional by default. Use nullable types or boolean for optional flags:
+
+```java
+@Command("example")
+public void example(
+    @Sender Player sender,
+    @Flag('p') Player targetPlayer,    // null if not provided
+    @Flag('a') Integer amount,         // null if not provided
+    @Flag('s') boolean silent          // false if not provided
+) {
+    if (targetPlayer == null) {
+        targetPlayer = sender; // Default to sender
+    }
+    
+    if (amount == null) {
+        amount = 1; // Default amount
+    }
+    
+    // Use targetPlayer and amount
+}
+```
+
+## Flag Descriptions
+
+Provide descriptions to improve help messages:
+
+```java
+@Command("search")
+public void search(
+    @Sender Player sender,
+    @Name("query") @Greedy String query,
+    @Flag(value = 'c', longName = "case-sensitive", 
+          description = "Perform case-sensitive search") boolean caseSensitive,
+    @Flag(value = 'r', longName = "regex", 
+          description = "Use regular expressions") boolean regex,
+    @Flag(value = 'l', longName = "limit", 
+          description = "Maximum number of results") @Range(min = 1, max = 100) Integer limit
+) {
+    // Search implementation
+}
+```
+
+The descriptions appear in help messages and tab completions.
+
+## Best Practices
+
+1. **Use meaningful short flags**: Choose letters that make sense (`-s` for silent, `-f` for force)
+2. **Provide long names**: Make commands more readable with `--silent` instead of just `-s`
+3. **Add descriptions**: Help users understand what each flag does
+4. **Use boolean for switches**: Simple on/off flags should be boolean
+5. **Use nullable types for optional values**: `Integer` instead of `int` for optional numeric flags
+6. **Combine related flags**: Let users use `-abc` instead of `-a -b -c`
+7. **Don't overuse required flags**: If a flag is always required, it might be better as a regular argument
+
+## Limitations
+
+<Warning>
+When using Brigadier integration, flags cannot be properly registered if your command has a `@Greedy` argument. This is a current limitation of the Brigadier integration.
+</Warning>

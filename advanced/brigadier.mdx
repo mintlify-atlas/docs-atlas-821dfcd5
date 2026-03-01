@@ -1,0 +1,251 @@
+---
+title: Brigadier Integration
+description: Use BladeBrigadierBuilder for Minecraft's Brigadier command system
+---
+
+Blade provides built-in integration with Mojang's Brigadier command system, which is used in modern Minecraft versions for command parsing and suggestions.
+
+## What is Brigadier?
+
+Brigadier is Mojang's command parser and dispatcher library used in Minecraft 1.13+. It provides:
+
+- Client-side command validation
+- Rich suggestions with tooltips
+- Command syntax highlighting
+- Proper argument types for the Minecraft client
+
+## Platform Support
+
+Brigadier integration is available on:
+
+- **Paper** (1.13+): Use the `paper` artifact (Java 21+) or `paper-legacy` artifact (Java 17-21)
+- **Fabric**: Use the `fabric` artifact (requires including the `brigadier` module)
+- **Minestom**: Use the `minestom` artifact
+
+<Note>
+For Bukkit/Spigot servers without Paper, Brigadier integration is not available. The `bukkit` artifact does not include Brigadier support.
+</Note>
+
+## BladeBrigadierBuilder
+
+The `BladeBrigadierBuilder` class converts Blade commands into Brigadier command trees:
+
+```java
+public final class BladeBrigadierBuilder<T, S> {
+    private final Blade blade;
+    private final Function<T, S> converter;
+    private final Function<S, Sender<S>> wrapper;
+    
+    /**
+     * Builds a Brigadier command tree from a Blade command tree node.
+     */
+    @NotNull
+    public LiteralCommandNode<T> buildLiteral(
+        @NotNull CommandTreeNode node,
+        @NotNull String label,
+        @NotNull SuggestionProvider<T> suggestionProvider,
+        @NotNull Command<T> executor
+    )
+}
+```
+
+## How It Works
+
+Blade automatically maps your command arguments to appropriate Brigadier argument types:
+
+### String Arguments
+
+```java
+// Regular string -> StringArgumentType.word()
+@Name("name") String name
+
+// Greedy string -> StringArgumentType.greedyString()
+@Name("message") @Greedy String message
+
+// Quoted string -> StringArgumentType.string()
+@Name("text") String text // When @Quoted is on method or parameter
+```
+
+### Numeric Arguments with Ranges
+
+```java
+// Integer with range -> IntegerArgumentType.integer(min, max)
+@Name("amount") @Range(min = 1, max = 64) int amount
+// Maps to: IntegerArgumentType.integer(1, 64)
+
+// Float with range -> FloatArgumentType.floatArg(min, max)
+@Name("speed") @Range(min = 0.1, max = 2.0) float speed
+// Maps to: FloatArgumentType.floatArg(0.1f, 2.0f)
+
+// Double with range -> DoubleArgumentType.doubleArg(min, max)
+@Name("multiplier") @Range(min = 0.5, max = 10.0) double multiplier
+// Maps to: DoubleArgumentType.doubleArg(0.5, 10.0)
+
+// Long with range -> LongArgumentType.longArg(min, max)
+@Name("timestamp") @Range(min = 0) long timestamp
+// Maps to: LongArgumentType.longArg(0, Long.MAX_VALUE)
+```
+
+### Boolean Arguments
+
+Blade uses `StringArgumentType.word()` for booleans instead of `BoolArgumentType.bool()` because Blade supports additional true/false values like `on`/`off` and `yes`/`no`:
+
+```java
+@Name("enabled") boolean enabled
+// Maps to: StringArgumentType.word()
+// Accepts: true, false, yes, no, on, off
+```
+
+## Permission Integration
+
+Brigadier command nodes respect Blade's permission system:
+
+```java
+private Predicate<T> createPermissionPredicate(@NotNull CommandTreeNode node) {
+    return sender -> {
+        Sender<?> wrappedSender = wrapper.apply(converter.apply(sender));
+        Context context = new Context(blade, wrappedSender, "", new String[0]);
+
+        if (node.command() != null) {
+            return node.command().hasPermission(context);
+        }
+
+        // For stub nodes, check if any child commands are accessible
+        if (node.isStub()) {
+            return hasAccessibleCommand(node, context);
+        }
+
+        return true;
+    };
+}
+```
+
+This means:
+- Commands with `@Permission` will only show in tab completion if the player has permission
+- Both regular permissions and custom permission predicates are respected
+- Parent nodes are hidden if no child commands are accessible
+
+## Flags and Brigadier
+
+Blade handles flags in Brigadier by adding a greedy string argument at the end:
+
+```java
+if (!node.command().flags().isEmpty()) {
+    // Add a greedy argument for flags
+    // Cannot be used if the command already has a greedy argument
+    
+    RequiredArgumentBuilder<T, String> builder = RequiredArgumentBuilder
+        .<T, String>argument("flags", StringArgumentType.greedyString())
+        .suggests(suggestionProvider)
+        .requires(createPermissionPredicate(node))
+        .executes(brigadierCommand);
+    
+    commandNode.addChild(builder.build());
+}
+```
+
+<Warning>
+If your command uses both `@Flag` parameters and a `@Greedy` string parameter, the flags will not be registered in Brigadier. This is a current limitation of the integration.
+</Warning>
+
+## Rich Suggestions
+
+Brigadier supports rich suggestions with tooltips. Blade provides the `RichSuggestionsBuilder` interface:
+
+```java
+public class MyArgumentProvider implements ArgumentProvider<MyType> {
+    @Override
+    public void suggestRich(@NotNull Context ctx,
+                           @NotNull InputArgument arg,
+                           @NotNull RichSuggestionsBuilder suggestions) throws BladeParseError {
+        // Add suggestions with tooltips
+        suggestions.suggest("option1", "Description of option 1");
+        suggestions.suggest("option2", "Description of option 2");
+        
+        // For numeric suggestions
+        suggestions.suggestNumber(42, "The answer to everything");
+    }
+}
+```
+
+These tooltips will appear in the Minecraft client when hovering over suggestions.
+
+## Subcommands
+
+Brigadier integration properly handles nested subcommands:
+
+```java
+@Command("admin")
+public void admin(@Sender Player player) {
+    // Base command
+}
+
+@Command("admin teleport")
+public void adminTeleport(
+    @Sender Player player,
+    @Name("target") Player target
+) {
+    // Subcommand with argument
+}
+
+@Command("admin teleport coords")
+public void adminTeleportCoords(
+    @Sender Player player,
+    @Name("x") double x,
+    @Name("y") double y,
+    @Name("z") double z
+) {
+    // Nested subcommand
+}
+```
+
+All of these will be properly registered as Brigadier nodes with the correct parent-child relationships.
+
+## Custom Argument Types
+
+For custom argument types, Blade falls back to `StringArgumentType.string()`:
+
+```java
+@Command("example")
+public void example(
+    @Sender Player player,
+    @Name("data") CustomData data // Custom type
+) {
+    // Brigadier will use StringArgumentType.string() for CustomData
+    // Your ArgumentProvider<CustomData> will still be called for parsing
+}
+```
+
+This means custom types work in Brigadier but don't get specialized client-side validation.
+
+## Platform-Specific Usage
+
+### Paper
+
+The Paper platform adapter automatically handles Brigadier integration. No additional setup is required.
+
+### Fabric
+
+For Fabric, make sure to include the Brigadier module as a jar-in-jar dependency:
+
+```gradle
+include(modImplementation("io.github.vaperion.blade:fabric:VERSION"))
+include(modImplementation("io.github.vaperion.blade:brigadier:VERSION"))
+include(modImplementation("io.github.vaperion.blade:core:VERSION"))
+```
+
+## Benefits of Brigadier Integration
+
+1. **Client-side validation**: Arguments are validated before the command is sent
+2. **Better UX**: Players see syntax errors immediately
+3. **Rich tooltips**: Provide helpful descriptions for command arguments
+4. **Syntax highlighting**: Commands are highlighted in the client
+5. **Permission-aware**: Only shows commands the player can use
+6. **Native feel**: Commands feel like vanilla Minecraft commands
+
+## Limitations
+
+1. **Flags with greedy arguments**: Cannot register flags if a greedy argument exists
+2. **Custom types**: Fall back to string argument type
+3. **Complex validation**: Some validation still happens server-side
+4. **Platform dependency**: Only available on Paper 1.13+, Fabric, and Minestom

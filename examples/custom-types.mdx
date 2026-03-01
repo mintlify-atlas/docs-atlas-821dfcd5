@@ -1,0 +1,533 @@
+---
+title: 'Custom Argument Types'
+description: 'Create custom argument providers to parse and validate your own types'
+---
+
+Blade allows you to create custom argument providers to handle any type you want. This guide shows you how to build providers for custom classes, with validation, tab completion, and error handling.
+
+## What is an ArgumentProvider?
+
+An `ArgumentProvider<T>` is responsible for:
+
+1. **Parsing** - Converting string input into your custom type
+2. **Validation** - Ensuring the input is valid
+3. **Suggestions** - Providing tab completion options
+4. **Error Handling** - Returning helpful error messages
+
+## Basic Provider Structure
+
+Every provider implements the `ArgumentProvider<T>` interface:
+
+```java
+public interface ArgumentProvider<T> {
+    // Required: Parse the argument
+    @Nullable
+    T provide(@NotNull Context ctx, @NotNull InputArgument arg) throws BladeParseError;
+    
+    // Optional: Provide tab completions
+    default void suggest(@NotNull Context ctx, 
+                        @NotNull InputArgument arg, 
+                        @NotNull SuggestionsBuilder suggestions) throws BladeParseError {
+    }
+    
+    // Optional: Provide a default argument name
+    @Nullable
+    default String defaultArgName(@NotNull AnnotatedElement element) {
+        return null;
+    }
+}
+```
+
+## Simple Custom Type Example
+
+Let's create a provider for a custom `Rank` class:
+
+<Steps>
+  <Step title="Create Your Custom Type">
+    ```java
+    public class Rank {
+        private final String name;
+        private final int level;
+        
+        public Rank(String name, int level) {
+            this.name = name;
+            this.level = level;
+        }
+        
+        public String getName() { return name; }
+        public int getLevel() { return level; }
+        
+        // Static method to get all ranks
+        public static List<Rank> getAllRanks() {
+            return Arrays.asList(
+                new Rank("Member", 1),
+                new Rank("VIP", 2),
+                new Rank("Moderator", 3),
+                new Rank("Admin", 4)
+            );
+        }
+        
+        public static Rank getByName(String name) {
+            return getAllRanks().stream()
+                .filter(r -> r.getName().equalsIgnoreCase(name))
+                .findFirst()
+                .orElse(null);
+        }
+    }
+    ```
+  </Step>
+
+  <Step title="Create the ArgumentProvider">
+    ```java
+    public class RankArgumentProvider implements ArgumentProvider<Rank> {
+        
+        @Override
+        public @Nullable Rank provide(@NotNull Context ctx, @NotNull InputArgument arg) 
+                throws BladeParseError {
+            // Get the input string
+            String input = arg.requireValue();
+            
+            // Try to find the rank
+            Rank rank = Rank.getByName(input);
+            
+            // If not found, throw an error
+            if (rank == null) {
+                throw BladeParseError.recoverable(
+                    "Unknown rank: " + input + ". Available: Member, VIP, Moderator, Admin"
+                );
+            }
+            
+            return rank;
+        }
+        
+        @Override
+        public void suggest(@NotNull Context ctx, 
+                           @NotNull InputArgument arg, 
+                           @NotNull SuggestionsBuilder suggestions) {
+            // Provide tab completion for all rank names
+            String input = arg.requireValue().toLowerCase();
+            
+            for (Rank rank : Rank.getAllRanks()) {
+                if (rank.getName().toLowerCase().startsWith(input)) {
+                    suggestions.suggest(rank.getName());
+                }
+            }
+        }
+        
+        @Override
+        public @Nullable String defaultArgName(@NotNull AnnotatedElement element) {
+            return "rank"; // Will show as <rank> in usage
+        }
+    }
+    ```
+  </Step>
+
+  <Step title="Register the Provider">
+    ```java
+    public class MyPlugin extends JavaPlugin {
+        @Override
+        public void onEnable() {
+            Blade.forPlatform(new BladeBukkitPlatform(this))
+                .bind(binder -> {
+                    // Register the custom provider
+                    binder.bind(Rank.class, new RankArgumentProvider());
+                })
+                .build()
+                .registerPackage(MyPlugin.class, "com.example.commands");
+        }
+    }
+    ```
+  </Step>
+
+  <Step title="Use in Commands">
+    ```java
+    public class RankCommand {
+        @Command("setrank")
+        @Description("Set a player's rank")
+        @Permission("ranks.admin")
+        public static void setRank(
+            @Sender CommandSender sender,
+            @Name("player") Player target,
+            @Name("rank") Rank rank  // Automatically uses RankArgumentProvider!
+        ) {
+            // Set the player's rank
+            target.sendMessage("Your rank has been set to: " + rank.getName());
+            sender.sendMessage("Set " + target.getName() + "'s rank to " + rank.getName());
+        }
+    }
+    ```
+  </Step>
+</Steps>
+
+## Handling Optional Arguments
+
+Support optional arguments in your provider:
+
+```java
+public class TimeArgumentProvider implements ArgumentProvider<Integer> {
+    
+    @Override
+    public @Nullable Integer provide(@NotNull Context ctx, @NotNull InputArgument arg) 
+            throws BladeParseError {
+        
+        // Check if argument was provided
+        if (arg.status() == InputArgument.Status.NOT_PRESENT) {
+            // Return a default value for optional arguments
+            return 60; // Default to 60 seconds
+        }
+        
+        String input = arg.requireValue();
+        
+        // Parse time with units: 30s, 5m, 2h, 1d
+        try {
+            char unit = input.charAt(input.length() - 1);
+            int value = Integer.parseInt(input.substring(0, input.length() - 1));
+            
+            return switch (unit) {
+                case 's' -> value;
+                case 'm' -> value * 60;
+                case 'h' -> value * 3600;
+                case 'd' -> value * 86400;
+                default -> throw BladeParseError.recoverable(
+                    "Invalid time format. Use: 30s, 5m, 2h, or 1d"
+                );
+            };
+        } catch (NumberFormatException e) {
+            throw BladeParseError.recoverable(
+                "Invalid time value. Use: 30s, 5m, 2h, or 1d"
+            );
+        }
+    }
+    
+    @Override
+    public void suggest(@NotNull Context ctx, 
+                       @NotNull InputArgument arg, 
+                       @NotNull SuggestionsBuilder suggestions) {
+        suggestions.suggest("30s");
+        suggestions.suggest("5m");
+        suggestions.suggest("1h");
+        suggestions.suggest("1d");
+    }
+}
+```
+
+**Usage in commands:**
+```java
+@Command("mute")
+public static void mute(
+    @Sender Player sender,
+    @Name("player") Player target,
+    @Provider(TimeArgumentProvider.class) @Opt Integer duration
+) {
+    int seconds = duration != null ? duration : 60;
+    sender.sendMessage("Muted " + target.getName() + " for " + seconds + " seconds");
+}
+```
+
+## Advanced: Custom Data Class Provider
+
+Here's the example from the README showing a more complex provider:
+
+```java
+public class Data {
+    public String message;
+    public boolean wasProvided;
+}
+
+public class DataArgumentProvider implements ArgumentProvider<Data> {
+    @Override
+    public @Nullable Data provide(@NotNull Context ctx, @NotNull InputArgument arg) {
+        Data data = new Data();
+
+        if (arg.status() == InputArgument.Status.NOT_PRESENT) {
+            data.wasProvided = false;
+            data.message = "Default value: " + arg.value();
+        } else {
+            data.wasProvided = true;
+            data.message = arg.value();
+        }
+
+        // Error handling examples:
+        // throw new BladeUsageMessage(); // Show usage message
+        // throw BladeParseError.fatal("Custom error message"); // Fatal error
+        // throw BladeParseError.recoverable("Custom error message"); // Allow recovery if optional
+
+        return data;
+    }
+
+    @Override
+    public void suggest(@NotNull Context ctx, @NotNull InputArgument arg, @NotNull SuggestionsBuilder suggestions) {
+        suggestions.suggest("example");
+    }
+}
+```
+
+## Error Handling
+
+Blade provides three types of errors:
+
+### 1. Recoverable Errors
+
+Use for optional arguments that can fall back to `null`:
+
+```java
+@Override
+public Player provide(@NotNull Context ctx, @NotNull InputArgument arg) throws BladeParseError {
+    String input = arg.requireValue();
+    Player player = Bukkit.getPlayer(input);
+    
+    if (player == null) {
+        // If the argument is @Opt, this will return null
+        // If the argument is required, command execution fails
+        throw BladeParseError.recoverable("Player not found: " + input);
+    }
+    
+    return player;
+}
+```
+
+### 2. Fatal Errors
+
+Use when the error should always fail the command:
+
+```java
+@Override
+public BankAccount provide(@NotNull Context ctx, @NotNull InputArgument arg) throws BladeParseError {
+    String input = arg.requireValue();
+    
+    try {
+        int accountId = Integer.parseInt(input);
+        BankAccount account = database.getAccount(accountId);
+        
+        if (account == null) {
+            // Always fail, even if argument is optional
+            throw BladeParseError.fatal("Account #" + accountId + " does not exist");
+        }
+        
+        return account;
+    } catch (NumberFormatException e) {
+        throw BladeParseError.fatal("Invalid account ID: " + input);
+    }
+}
+```
+
+### 3. Usage Message
+
+Show the command's usage message:
+
+```java
+@Override
+public Player provide(@NotNull Context ctx, @NotNull InputArgument arg) throws BladeParseError {
+    // For @Opt(Opt.Type.SENDER) arguments
+    if (arg.isOptionalWithType(Opt.Type.SENDER) && !arg.status().isPresent()) {
+        Player sender = ctx.sender().parseAs(Player.class);
+        if (sender == null) {
+            // Can't default to sender if sender isn't a player
+            throw new BladeUsageMessage();
+        }
+        return sender;
+    }
+    
+    // ... rest of parsing
+}
+```
+
+## Context-Aware Providers
+
+Access the command context for advanced logic:
+
+```java
+public class SmartPlayerProvider implements ArgumentProvider<Player> {
+    
+    @Override
+    public @Nullable Player provide(@NotNull Context ctx, @NotNull InputArgument arg) 
+            throws BladeParseError {
+        String input = arg.requireValue();
+        
+        // Get the command sender
+        Player sender = ctx.sender().parseAs(Player.class);
+        
+        // Special keywords
+        if (input.equals("@me") && sender != null) {
+            return sender;
+        }
+        
+        if (input.equals("@random")) {
+            List<Player> players = new ArrayList<>(Bukkit.getOnlinePlayers());
+            if (players.isEmpty()) {
+                throw BladeParseError.recoverable("No players online");
+            }
+            return players.get(new Random().nextInt(players.size()));
+        }
+        
+        // Normal player lookup
+        Player target = Bukkit.getPlayer(input);
+        if (target == null) {
+            throw BladeParseError.recoverable("Player not found: " + input);
+        }
+        
+        // Visibility check
+        if (sender != null && !sender.canSee(target)) {
+            throw BladeParseError.recoverable("Player not found: " + input);
+        }
+        
+        return target;
+    }
+    
+    @Override
+    public void suggest(@NotNull Context ctx, 
+                       @NotNull InputArgument arg, 
+                       @NotNull SuggestionsBuilder suggestions) {
+        String input = arg.requireValue().toLowerCase();
+        Player sender = ctx.sender().parseAs(Player.class);
+        
+        // Add special keywords
+        if ("@me".startsWith(input)) suggestions.suggest("@me");
+        if ("@random".startsWith(input)) suggestions.suggest("@random");
+        
+        // Add visible players
+        for (Player player : Bukkit.getOnlinePlayers()) {
+            if (sender != null && !sender.canSee(player)) continue;
+            if (player.getName().toLowerCase().startsWith(input)) {
+                suggestions.suggest(player.getName());
+            }
+        }
+    }
+}
+```
+
+## Per-Parameter Override
+
+Override the provider for specific parameters without global registration:
+
+```java
+public class TeleportCommand {
+    @Command("tpoffline")
+    @Description("Teleport to an offline player's last location")
+    @Permission("admin.tpoffline")
+    public static void tpOffline(
+        @Sender Player sender,
+        // Use a different provider just for this parameter
+        @Provider(OfflinePlayerProvider.class) Player target
+    ) {
+        sender.teleport(target.getLastLocation());
+        sender.sendMessage("Teleported to " + target.getName() + "'s last location");
+    }
+}
+```
+
+### Provider Scopes
+
+Control which parts of the provider are used:
+
+```java
+// Override only parsing, keep default tab completion
+@Provider(value = CustomParser.class, scope = Provider.Scope.PARSER)
+Player player1,
+
+// Override only tab completion, keep default parsing
+@Provider(value = CustomSuggestions.class, scope = Provider.Scope.SUGGESTIONS)
+Player player2,
+
+// Override both (default)
+@Provider(value = FullCustomProvider.class, scope = Provider.Scope.BOTH)
+Player player3
+```
+
+## Real-World Example: Location Provider
+
+A comprehensive provider for custom locations:
+
+```java
+public class GameLocation {
+    private final String name;
+    private final Location location;
+    
+    public GameLocation(String name, Location location) {
+        this.name = name;
+        this.location = location;
+    }
+    
+    public String getName() { return name; }
+    public Location getLocation() { return location; }
+}
+
+public class GameLocationProvider implements ArgumentProvider<GameLocation> {
+    private final Map<String, GameLocation> locations = new HashMap<>();
+    
+    public GameLocationProvider() {
+        // Load locations from config/database
+        loadLocations();
+    }
+    
+    private void loadLocations() {
+        // Example locations
+        locations.put("spawn", new GameLocation("spawn", /* location */));
+        locations.put("arena", new GameLocation("arena", /* location */));
+        locations.put("shop", new GameLocation("shop", /* location */));
+    }
+    
+    @Override
+    public @Nullable GameLocation provide(@NotNull Context ctx, @NotNull InputArgument arg) 
+            throws BladeParseError {
+        String input = arg.requireValue();
+        
+        GameLocation loc = locations.get(input.toLowerCase());
+        
+        if (loc == null) {
+            // Build helpful error message
+            String available = String.join(", ", locations.keySet());
+            throw BladeParseError.recoverable(
+                "Unknown location: " + input + ". Available: " + available
+            );
+        }
+        
+        return loc;
+    }
+    
+    @Override
+    public void suggest(@NotNull Context ctx, 
+                       @NotNull InputArgument arg, 
+                       @NotNull SuggestionsBuilder suggestions) {
+        String input = arg.requireValue().toLowerCase();
+        
+        // Suggest matching locations
+        locations.keySet().stream()
+            .filter(name -> name.startsWith(input))
+            .forEach(suggestions::suggest);
+    }
+    
+    @Override
+    public @Nullable String defaultArgName(@NotNull AnnotatedElement element) {
+        return "location";
+    }
+}
+```
+
+**Usage:**
+```java
+@Command("goto")
+public static void goTo(
+    @Sender Player player,
+    @Name("location") GameLocation location
+) {
+    player.teleport(location.getLocation());
+    player.sendMessage("Teleported to " + location.getName());
+}
+```
+
+## Important Notes
+
+<Warning>
+Argument provider instances **must be stateless**. A single instance is used for all commands. If you need to store state, ensure it's thread-safe.
+</Warning>
+
+<Tip>
+Use `defaultArgName()` to provide a user-friendly parameter name instead of requiring `@Name` on every parameter.
+</Tip>
+
+## Next Steps
+
+- [Basic Commands](/examples/basic-commands) - Review command fundamentals
+- [Complex Commands](/examples/complex-commands) - Advanced command features
+- [Argument Providers](/api/argument-provider) - Detailed provider documentation

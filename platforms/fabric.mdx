@@ -1,0 +1,173 @@
+---
+title: Fabric
+description: Setup and usage guide for Blade on Fabric with jar-in-jar dependency notes
+---
+
+The Fabric platform provides Blade command framework support for Fabric mods with native Brigadier integration.
+
+## Requirements
+
+- Java 21 or higher
+- Fabric Loader
+- Minecraft 1.20.6+
+
+## Installation
+
+<Warning>
+When using Blade with Fabric, you **must** use `include(modImplementation("..."))` to add Blade as a jar-in-jar dependency. 
+
+You'll need to include the `fabric`, `brigadier`, and `core` modules separately, as Fabric Loom doesn't resolve transitive dependencies for jar-in-jar.
+</Warning>
+
+<Tabs>
+  <Tab title="Gradle (Groovy)">
+    ```groovy
+    dependencies {
+        // Include all required Blade modules as jar-in-jar
+        include(modImplementation('io.github.vaperion.blade:fabric:VERSION'))
+        include(modImplementation('io.github.vaperion.blade:brigadier:VERSION'))
+        include(modImplementation('io.github.vaperion.blade:core:VERSION'))
+    }
+    ```
+  </Tab>
+  <Tab title="Gradle (Kotlin)">
+    ```kotlin
+    dependencies {
+        // Include all required Blade modules as jar-in-jar
+        include(modImplementation("io.github.vaperion.blade:fabric:VERSION")!!)
+        include(modImplementation("io.github.vaperion.blade:brigadier:VERSION")!!)
+        include(modImplementation("io.github.vaperion.blade:core:VERSION")!!)
+    }
+    ```
+  </Tab>
+</Tabs>
+
+Replace `VERSION` with the latest version available on Maven Central.
+
+## Setup
+
+Initialize Blade in your mod's initialization using `BladeFabricPlatform`:
+
+```java
+public class MyFabricMod implements ModInitializer {
+    @Override
+    public void onInitialize() {
+        ModContainer mod = FabricLoader.getInstance()
+            .getModContainer("mymod")
+            .orElseThrow();
+
+        Blade.forPlatform(new BladeFabricPlatform(mod))
+            .config(cfg -> {
+                cfg.commandQualifier("mymod"); // Optional, defaults to mod name
+                cfg.defaultPermissionMessage(Text.literal("No permission!")
+                    .styled(style -> style.withColor(Formatting.RED)));
+            })
+            .bind(binder -> {
+                // Optional: Register custom argument providers
+                binder.bind(ServerPlayerEntity.class, new MyCustomPlayerProvider());
+            })
+            .build()
+            // Register all commands in a package (including sub-packages):
+            .registerPackage(MyFabricMod.class, "com.example.commands")
+            // or register them individually:
+            .register(ExampleCommand.class)
+        ;
+    }
+}
+```
+
+## Features
+
+### Brigadier Integration
+
+The Fabric platform automatically integrates with Minecraft's native Brigadier command system, providing:
+
+- Native client-side tab completion
+- Command syntax validation
+- Real-time command suggestions
+- Full Brigadier command tree support
+
+### Permissions API
+
+<Tip>
+Blade uses [Lucko's Fabric Permissions API](https://github.com/lucko/fabric-permissions-api) for permission checks on Fabric.
+
+Plugins such as LuckPerms provide support for this API, enabling advanced permission management on Fabric servers.
+</Tip>
+
+When the Fabric Permissions API is available, you'll see:
+
+```
+Hooked into Lucko's Fabric Permissions API for permission handling.
+```
+
+If not found, Blade falls back to vanilla permission handling:
+
+```
+Lucko's Fabric Permissions API not found, falling back to vanilla permission handling.
+```
+
+### Built-in Argument Types
+
+The Fabric platform includes a built-in argument provider for:
+
+- `ServerPlayerEntity` - Online player lookup
+
+### Minecraft Text Components
+
+Fabric uses Minecraft's native `Text` system for messages:
+
+```java
+cfg.defaultPermissionMessage(
+    Text.literal("You don't have permission!")
+        .styled(style -> style.withColor(Formatting.RED))
+);
+```
+
+### Example Command
+
+```java
+public class TeleportCommand {
+    @Command("tp")
+    @Description("Teleport to a player")
+    @Permission("mymod.teleport")
+    public void teleport(
+        @Sender ServerPlayerEntity sender,
+        @Name("target") ServerPlayerEntity target
+    ) {
+        sender.teleport(
+            target.getServerWorld(),
+            target.getX(),
+            target.getY(),
+            target.getZ(),
+            target.getYaw(),
+            target.getPitch()
+        );
+        
+        sender.sendMessage(
+            Text.literal("Teleported to " + target.getName().getString())
+                .styled(style -> style.withColor(Formatting.GREEN))
+        );
+    }
+}
+```
+
+## Dependency Information
+
+### Why Jar-in-Jar?
+
+Fabric uses jar-in-jar to bundle dependencies directly into your mod file. This ensures that Blade is available at runtime without requiring users to manually download it.
+
+### Required Modules
+
+- **fabric**: The Fabric-specific platform implementation
+- **brigadier**: Brigadier integration layer
+- **core**: Core Blade framework
+
+## Next Steps
+
+- Learn about [creating commands](/core-concepts/commands)
+- Explore [argument providers](/api/argument-provider)
+- Understand [permissions](/advanced/permissions)
+- Check out [Brigadier integration](/advanced/brigadier)
+- Read about [Fabric Permissions API](https://github.com/lucko/fabric-permissions-api)

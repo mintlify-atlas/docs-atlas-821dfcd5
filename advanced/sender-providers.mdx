@@ -1,0 +1,253 @@
+---
+title: Sender Providers
+description: Create custom SenderProvider implementations to support custom sender types
+---
+
+Sender providers allow you to convert the generic command sender into specific types that your commands can use. This is useful for adding support for custom player wrappers or specialized sender types.
+
+## SenderProvider Interface
+
+The `SenderProvider<T>` interface converts a `Sender` into your custom type:
+
+```java
+public interface SenderProvider<T> {
+    /**
+     * Converts the given Sender into the specific type.
+     *
+     * @param context the command context
+     * @param sender  the sender
+     * @return the converted value, or null if conversion failed
+     * @throws BladeParseError if an error occurs during conversion
+     */
+    @Nullable T provide(@NotNull Context context, @NotNull Sender<?> sender) throws BladeParseError;
+
+    /**
+     * Provides a friendly name for this sender type, used in error messages.
+     *
+     * @param plural whether the name should be plural
+     * @return the friendly name, or null to use a default name
+     */
+    @Nullable
+    default String friendlyName(boolean plural) {
+        return null;
+    }
+}
+```
+
+<Warning>
+Sender provider instances must be **stateless**, as a single instance will be used for all commands.
+</Warning>
+
+## Creating a Custom Sender Provider
+
+Here's an example of creating a sender provider for a custom player wrapper:
+
+```java
+public class CustomPlayer {
+    private final Player bukkitPlayer;
+    private final UUID uuid;
+    
+    public CustomPlayer(Player bukkitPlayer) {
+        this.bukkitPlayer = bukkitPlayer;
+        this.uuid = bukkitPlayer.getUniqueId();
+    }
+    
+    public Player getBukkitPlayer() {
+        return bukkitPlayer;
+    }
+    
+    public UUID getUuid() {
+        return uuid;
+    }
+}
+
+public class CustomPlayerProvider implements SenderProvider<CustomPlayer> {
+    @Override
+    public @Nullable CustomPlayer provide(@NotNull Context context, @NotNull Sender<?> sender) throws BladeParseError {
+        Object actualSender = sender.sender();
+        
+        // Check if the sender is a Player
+        if (!(actualSender instanceof Player player)) {
+            throw BladeParseError.fatal("Only players can use this command!");
+        }
+        
+        return new CustomPlayer(player);
+    }
+    
+    @Override
+    public @Nullable String friendlyName(boolean plural) {
+        return plural ? "players" : "player";
+    }
+}
+```
+
+## Error Handling
+
+When the sender type is invalid, throw a `BladeParseError`:
+
+```java
+@Override
+public @Nullable MySender provide(@NotNull Context context, @NotNull Sender<?> sender) throws BladeParseError {
+    Object actualSender = sender.sender();
+    
+    if (!(actualSender instanceof Player)) {
+        throw BladeParseError.fatal("Only players can execute this command!");
+    }
+    
+    // For recoverable errors (less common with sender providers)
+    if (someCondition) {
+        throw BladeParseError.recoverable("Temporary error message");
+    }
+    
+    return convertToMySender(actualSender);
+}
+```
+
+## Friendly Names
+
+The `friendlyName()` method provides better error messages to users:
+
+```java
+@Override
+public @Nullable String friendlyName(boolean plural) {
+    if (plural) {
+        return "players"; // Used in messages like "Available to: players"
+    } else {
+        return "player"; // Used in messages like "Only a player can use this"
+    }
+}
+```
+
+If you return `null`, Blade will use a default name based on the class name.
+
+## Registering Sender Providers
+
+Register your custom sender provider in the Blade builder:
+
+```java
+Blade.forPlatform(new BladeBukkitPlatform(this))
+    .bind(binder -> {
+        binder.bindSender(CustomPlayer.class, new CustomPlayerProvider());
+    })
+    .build();
+```
+
+## Using Custom Senders in Commands
+
+Once registered, you can use your custom sender type in any command:
+
+```java
+@Command("example")
+public void example(
+    @Sender CustomPlayer player,
+    @Name("message") String message
+) {
+    player.getBukkitPlayer().sendMessage("You said: " + message);
+    logger.info("Player " + player.getUuid() + " executed command");
+}
+```
+
+## Multiple Sender Types
+
+You can register multiple sender providers for different types:
+
+```java
+.bind(binder -> {
+    binder.bindSender(Player.class, new BukkitPlayerProvider());
+    binder.bindSender(ConsoleCommandSender.class, new ConsoleProvider());
+    binder.bindSender(CustomPlayer.class, new CustomPlayerProvider());
+    binder.bindSender(AdminPlayer.class, new AdminPlayerProvider());
+})
+```
+
+Each command can then use the appropriate sender type:
+
+```java
+@Command("player-only")
+public void playerCommand(@Sender Player player) {
+    // Only players can execute this
+}
+
+@Command("console-only")
+public void consoleCommand(@Sender ConsoleCommandSender console) {
+    // Only console can execute this
+}
+
+@Command("admin-only")
+public void adminCommand(@Sender AdminPlayer admin) {
+    // Only admins can execute this
+}
+```
+
+## Releasing Default Sender Providers
+
+You can remove built-in sender providers:
+
+```java
+.bind(binder -> {
+    binder.releaseSender(Player.class); // Remove default Player provider
+    binder.bindSender(Player.class, new MyCustomPlayerProvider()); // Add replacement
+})
+```
+
+## Common Use Cases
+
+### Wrapper Objects
+
+Wrap platform senders with your own objects containing additional data:
+
+```java
+public class GamePlayer {
+    private final Player bukkitPlayer;
+    private final PlayerData data;
+    
+    public GamePlayer(Player player, PlayerData data) {
+        this.bukkitPlayer = player;
+        this.data = data;
+    }
+}
+
+public class GamePlayerProvider implements SenderProvider<GamePlayer> {
+    private final PlayerDataManager dataManager;
+    
+    public GamePlayerProvider(PlayerDataManager dataManager) {
+        this.dataManager = dataManager;
+    }
+    
+    @Override
+    public GamePlayer provide(@NotNull Context context, @NotNull Sender<?> sender) throws BladeParseError {
+        if (!(sender.sender() instanceof Player player)) {
+            throw BladeParseError.fatal("Only players can execute this command!");
+        }
+        
+        PlayerData data = dataManager.getData(player.getUniqueId());
+        return new GamePlayer(player, data);
+    }
+}
+```
+
+### Permission-Based Senders
+
+Create sender types that require specific permissions:
+
+```java
+public class ModeratorProvider implements SenderProvider<Player> {
+    @Override
+    public Player provide(@NotNull Context context, @NotNull Sender<?> sender) throws BladeParseError {
+        if (!(sender.sender() instanceof Player player)) {
+            throw BladeParseError.fatal("Only players can execute this command!");
+        }
+        
+        if (!player.hasPermission("myplugin.moderator")) {
+            throw BladeParseError.fatal("You must be a moderator to use this!");
+        }
+        
+        return player;
+    }
+    
+    @Override
+    public String friendlyName(boolean plural) {
+        return plural ? "moderators" : "moderator";
+    }
+}
+```

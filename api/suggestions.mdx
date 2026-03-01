@@ -1,0 +1,607 @@
+---
+title: 'Tab Completion & Suggestions'
+description: 'Build tab completion suggestions with SuggestionsBuilder and RichSuggestionsBuilder'
+---
+
+Blade provides two suggestion builder interfaces for implementing tab completion in commands: `SuggestionsBuilder` for basic string suggestions and `RichSuggestionsBuilder` for advanced completions with tooltips and metadata.
+
+## Overview
+
+Suggestion builders are used in the `suggest()` and `suggestRich()` methods of argument providers to provide tab completion suggestions to users.
+
+## SuggestionsBuilder
+
+The basic suggestion builder for string-based tab completions.
+
+### Class Definition
+
+```java
+public final class SuggestionsBuilder
+```
+
+**Package:** `me.vaperion.blade.util.command`
+
+### Methods
+
+<ResponseField name="suggest(String suggestion)" type="void">
+  Adds a suggestion to the list.
+  
+  If the suggestion already exists, it will not be added again. Only suggestions that pass the current filter will be included.
+  
+  <ParamField path="suggestion" type="String" required>
+    The suggestion text to add
+  </ParamField>
+  
+  ```java
+  @Override
+  public void suggest(@NotNull Context ctx,
+                     @NotNull InputArgument arg,
+                     @NotNull SuggestionsBuilder suggestions) {
+      suggestions.suggest("creative");
+      suggestions.suggest("survival");
+      suggestions.suggest("adventure");
+      suggestions.suggest("spectator");
+  }
+  ```
+</ResponseField>
+
+<ResponseField name="setFilter(Predicate<String> filter)" type="void">
+  Sets a filter for suggestions. Only suggestions that pass the filter will be included in the final list.
+  
+  <ParamField path="filter" type="Predicate<String>" required>
+    The filter predicate, or `null` to accept all suggestions
+  </ParamField>
+  
+  ```java
+  // Filter to only show suggestions starting with "pl"
+  suggestions.setFilter(s -> s.toLowerCase().startsWith("pl"));
+  suggestions.suggest("player");   // Included
+  suggestions.suggest("plot");     // Included
+  suggestions.suggest("creative"); // Filtered out
+  ```
+</ResponseField>
+
+<ResponseField name="testFilter(String suggestion)" type="boolean">
+  Tests whether a suggestion passes the current filter.
+  
+  <ParamField path="suggestion" type="String" required>
+    The suggestion to test
+  </ParamField>
+  
+  **Returns:** `true` if the suggestion passes the filter, `false` otherwise
+  
+  ```java
+  if (suggestions.testFilter("player")) {
+      suggestions.suggest("player");
+  }
+  ```
+</ResponseField>
+
+<ResponseField name="clear()" type="void">
+  Clears all current suggestions.
+  
+  ```java
+  suggestions.clear();
+  ```
+</ResponseField>
+
+<ResponseField name="count()" type="int">
+  Returns the number of suggestions currently stored.
+  
+  ```java
+  int count = suggestions.count();
+  ```
+</ResponseField>
+
+<ResponseField name="build()" type="List<String>">
+  Builds and returns an unmodifiable list of all suggestions.
+  
+  ```java
+  List<String> finalSuggestions = suggestions.build();
+  ```
+</ResponseField>
+
+### Basic Usage Example
+
+```java
+public class GameModeProvider implements ArgumentProvider<GameMode> {
+    @Override
+    public GameMode provide(@NotNull Context ctx, @NotNull InputArgument arg) {
+        String value = arg.requireValue().toLowerCase();
+        
+        try {
+            return GameMode.valueOf(value.toUpperCase());
+        } catch (IllegalArgumentException e) {
+            throw BladeParseError.recoverable(
+                "Invalid game mode: " + value
+            );
+        }
+    }
+    
+    @Override
+    public void suggest(@NotNull Context ctx,
+                       @NotNull InputArgument arg,
+                       @NotNull SuggestionsBuilder suggestions) {
+        // Add all game modes
+        for (GameMode mode : GameMode.values()) {
+            suggestions.suggest(mode.name().toLowerCase());
+        }
+    }
+}
+```
+
+## RichSuggestionsBuilder
+
+An advanced interface for building suggestions with rich metadata like tooltips and numeric completions. This is particularly useful for Brigadier-based platforms.
+
+### Interface Definition
+
+```java
+public interface RichSuggestionsBuilder
+```
+
+**Package:** `me.vaperion.blade.util.command`
+
+### Methods
+
+<ResponseField name="suggest(String text)" type="void">
+  Adds a string suggestion.
+  
+  <ParamField path="text" type="String" required>
+    The suggested text
+  </ParamField>
+  
+  ```java
+  suggestions.suggest("creative");
+  suggestions.suggest("survival");
+  ```
+</ResponseField>
+
+<ResponseField name="suggest(String text, SuggestionTooltip tooltip)" type="void">
+  Adds a string suggestion with a tooltip.
+  
+  <ParamField path="text" type="String" required>
+    The suggested text
+  </ParamField>
+  
+  <ParamField path="tooltip" type="SuggestionTooltip" optional>
+    The tooltip metadata, or `null`
+  </ParamField>
+  
+  ```java
+  suggestions.suggest("creative", 
+      SuggestionTooltip.text("Creative mode - unlimited resources"));
+  suggestions.suggest("survival",
+      SuggestionTooltip.text("Survival mode - gather and survive"));
+  ```
+</ResponseField>
+
+<ResponseField name="suggest(int value)" type="void">
+  Adds an integer suggestion.
+  
+  <ParamField path="value" type="int" required>
+    The suggested integer value
+  </ParamField>
+  
+  ```java
+  // Suggest numbers 1-10
+  for (int i = 1; i <= 10; i++) {
+      suggestions.suggest(i);
+  }
+  ```
+</ResponseField>
+
+<ResponseField name="suggest(int value, SuggestionTooltip tooltip)" type="void">
+  Adds an integer suggestion with a tooltip.
+  
+  <ParamField path="value" type="int" required>
+    The suggested integer value
+  </ParamField>
+  
+  <ParamField path="tooltip" type="SuggestionTooltip" optional>
+    The tooltip metadata, or `null`
+  </ParamField>
+  
+  ```java
+  suggestions.suggest(1, SuggestionTooltip.text("One player"));
+  suggestions.suggest(2, SuggestionTooltip.text("Two players"));
+  ```
+</ResponseField>
+
+<ResponseField name="input()" type="String">
+  Returns the full input string used for suggestion generation.
+  
+  ```java
+  String fullInput = suggestions.input();
+  // "/gamemode cre" -> "cre"
+  ```
+</ResponseField>
+
+<ResponseField name="start()" type="int">
+  Returns the start offset where suggestions should replace text.
+  
+  ```java
+  int startPos = suggestions.start();
+  ```
+</ResponseField>
+
+<ResponseField name="remaining()" type="String">
+  Returns the remaining input segment from the start position.
+  
+  ```java
+  String remaining = suggestions.remaining();
+  // Input: "/gamemode cre"
+  // remaining: "cre"
+  ```
+</ResponseField>
+
+<ResponseField name="remainingLowerCase()" type="String">
+  Returns the lowercase remaining input segment.
+  
+  Useful for case-insensitive filtering.
+  
+  ```java
+  String lower = suggestions.remainingLowerCase();
+  
+  for (String name : playerNames) {
+      if (name.toLowerCase().startsWith(lower)) {
+          suggestions.suggest(name);
+      }
+  }
+  ```
+</ResponseField>
+
+<ResponseField name="add(RichSuggestionsBuilder other)" type="void">
+  Adds all suggestions from another builder instance.
+  
+  <ParamField path="other" type="RichSuggestionsBuilder" required>
+    The builder to merge from
+  </ParamField>
+  
+  ```java
+  suggestions.add(otherBuilder);
+  ```
+</ResponseField>
+
+<ResponseField name="createOffset(int start)" type="RichSuggestionsBuilder">
+  Creates a new builder view with the given replacement offset.
+  
+  <ParamField path="start" type="int" required>
+    The replacement start offset
+  </ParamField>
+  
+  ```java
+  RichSuggestionsBuilder offset = suggestions.createOffset(5);
+  ```
+</ResponseField>
+
+<ResponseField name="restart()" type="RichSuggestionsBuilder">
+  Creates a new builder view that restarts at this builder's start offset.
+  
+  ```java
+  RichSuggestionsBuilder restarted = suggestions.restart();
+  ```
+</ResponseField>
+
+<ResponseField name="legacyView()" type="SuggestionsBuilder">
+  Returns the legacy string-only builder view.
+  
+  ```java
+  SuggestionsBuilder legacy = suggestions.legacyView();
+  legacy.suggest("text");
+  ```
+</ResponseField>
+
+<ResponseField name="testFilter(String suggestion)" type="boolean">
+  Tests whether a suggestion passes the current filter.
+  
+  <ParamField path="suggestion" type="String" required>
+    The suggestion to test
+  </ParamField>
+  
+  ```java
+  if (suggestions.testFilter("player")) {
+      suggestions.suggest("player");
+  }
+  ```
+</ResponseField>
+
+<ResponseField name="setFilter(Predicate<String> filter)" type="void">
+  Sets the suggestion filter.
+  
+  <ParamField path="filter" type="Predicate<String>" optional>
+    The filter predicate, or `null` to accept all suggestions
+  </ParamField>
+  
+  ```java
+  suggestions.setFilter(s -> s.startsWith("pl"));
+  ```
+</ResponseField>
+
+## SuggestionTooltip
+
+Creates tooltip metadata for rich suggestions.
+
+### Static Factory Methods
+
+<ResponseField name="SuggestionTooltip.text(String text)" type="SuggestionTooltip">
+  Creates a plain text tooltip.
+  
+  <ParamField path="text" type="String" required>
+    The tooltip text
+  </ParamField>
+  
+  ```java
+  SuggestionTooltip tooltip = SuggestionTooltip.text("Select creative mode");
+  suggestions.suggest("creative", tooltip);
+  ```
+</ResponseField>
+
+<ResponseField name="SuggestionTooltip.handle(Object handle)" type="SuggestionTooltip">
+  Creates a tooltip backed by a native handle.
+  
+  <ParamField path="handle" type="Object" required>
+    The native tooltip handle
+  </ParamField>
+  
+  ```java
+  Component component = Component.text("Tooltip");
+  SuggestionTooltip tooltip = SuggestionTooltip.handle(component);
+  ```
+</ResponseField>
+
+<ResponseField name="SuggestionTooltip.of(Object handle, String text)" type="SuggestionTooltip">
+  Creates a tooltip with both a native handle and text fallback.
+  
+  <ParamField path="handle" type="Object" required>
+    The native tooltip handle
+  </ParamField>
+  
+  <ParamField path="text" type="String" optional>
+    The fallback text representation
+  </ParamField>
+  
+  ```java
+  Component component = Component.text("Rich tooltip");
+  SuggestionTooltip tooltip = SuggestionTooltip.of(component, "Rich tooltip");
+  ```
+</ResponseField>
+
+### Instance Methods
+
+<ResponseField name="text()" type="String">
+  Returns the tooltip text representation, or `null` if not provided.
+  
+  ```java
+  String text = tooltip.text();
+  ```
+</ResponseField>
+
+<ResponseField name="as(Class<T> type)" type="T">
+  Returns a typed native tooltip handle.
+  
+  <ParamField path="type" type="Class<T>" required>
+    The requested native type
+  </ParamField>
+  
+  **Returns:** The native handle, or `null` if unavailable
+  
+  ```java
+  Component component = tooltip.as(Component.class);
+  ```
+</ResponseField>
+
+## Usage Examples
+
+### Basic String Suggestions
+
+```java
+public class MaterialProvider implements ArgumentProvider<Material> {
+    @Override
+    public Material provide(@NotNull Context ctx, @NotNull InputArgument arg) {
+        String value = arg.requireValue().toUpperCase();
+        
+        try {
+            return Material.valueOf(value);
+        } catch (IllegalArgumentException e) {
+            throw BladeParseError.recoverable(
+                "Invalid material: " + value
+            );
+        }
+    }
+    
+    @Override
+    public void suggest(@NotNull Context ctx,
+                       @NotNull InputArgument arg,
+                       @NotNull SuggestionsBuilder suggestions) {
+        // Suggest all materials
+        for (Material material : Material.values()) {
+            if (material.isItem()) {
+                suggestions.suggest(material.name().toLowerCase());
+            }
+        }
+    }
+}
+```
+
+### Rich Suggestions with Tooltips
+
+```java
+public class EnchantmentProvider implements ArgumentProvider<Enchantment> {
+    @Override
+    public Enchantment provide(@NotNull Context ctx, @NotNull InputArgument arg) {
+        String value = arg.requireValue();
+        Enchantment enchant = Enchantment.getByKey(NamespacedKey.minecraft(value));
+        
+        if (enchant == null) {
+            throw BladeParseError.recoverable(
+                "Unknown enchantment: " + value
+            );
+        }
+        
+        return enchant;
+    }
+    
+    @Override
+    public void suggestRich(@NotNull Context ctx,
+                           @NotNull InputArgument arg,
+                           @NotNull RichSuggestionsBuilder suggestions) {
+        // Get what user has typed so far
+        String typed = suggestions.remainingLowerCase();
+        
+        // Suggest enchantments with descriptions
+        for (Enchantment enchant : Enchantment.values()) {
+            String key = enchant.getKey().getKey();
+            
+            // Filter based on input
+            if (key.startsWith(typed)) {
+                suggestions.suggest(
+                    key,
+                    SuggestionTooltip.text(
+                        enchant.displayName(1) + " (Max: " + 
+                        enchant.getMaxLevel() + ")"
+                    )
+                );
+            }
+        }
+    }
+}
+```
+
+### Numeric Suggestions with Range
+
+```java
+public class LevelProvider implements ArgumentProvider<Integer> {
+    @Override
+    public Integer provide(@NotNull Context ctx, @NotNull InputArgument arg) {
+        String value = arg.requireValue();
+        
+        try {
+            int level = Integer.parseInt(value);
+            
+            // Check range
+            Range range = arg.range();
+            if (range != null) {
+                if (level < range.min() || level > range.max()) {
+                    throw BladeParseError.recoverable(
+                        "Level must be between " + (int)range.min() + 
+                        " and " + (int)range.max()
+                    );
+                }
+            }
+            
+            return level;
+        } catch (NumberFormatException e) {
+            throw BladeParseError.recoverable(
+                "Invalid level: " + value
+            );
+        }
+    }
+    
+    @Override
+    public void suggestRich(@NotNull Context ctx,
+                           @NotNull InputArgument arg,
+                           @NotNull RichSuggestionsBuilder suggestions) {
+        Range range = arg.range();
+        
+        if (range != null) {
+            int min = (int)range.min();
+            int max = (int)range.max();
+            
+            // Suggest levels within range
+            for (int i = min; i <= Math.min(max, min + 10); i++) {
+                suggestions.suggest(i, 
+                    SuggestionTooltip.text("Set level to " + i));
+            }
+        } else {
+            // Suggest common levels
+            suggestions.suggest(1, SuggestionTooltip.text("Beginner"));
+            suggestions.suggest(10, SuggestionTooltip.text("Intermediate"));
+            suggestions.suggest(50, SuggestionTooltip.text("Advanced"));
+            suggestions.suggest(100, SuggestionTooltip.text("Expert"));
+        }
+    }
+}
+```
+
+### Context-Aware Suggestions
+
+```java
+public class PlayerProvider implements ArgumentProvider<Player> {
+    @Override
+    public Player provide(@NotNull Context ctx, @NotNull InputArgument arg) {
+        String value = arg.requireValue();
+        Player player = Bukkit.getPlayer(value);
+        
+        if (player == null) {
+            throw BladeParseError.recoverable(
+                "Player not found: " + value
+            );
+        }
+        
+        return player;
+    }
+    
+    @Override
+    public void suggest(@NotNull Context ctx,
+                       @NotNull InputArgument arg,
+                       @NotNull SuggestionsBuilder suggestions) {
+        // Only suggest players visible to sender
+        Player sender = ctx.sender().parseAs(Player.class);
+        
+        for (Player player : Bukkit.getOnlinePlayers()) {
+            // Filter based on visibility
+            if (sender == null || sender.canSee(player)) {
+                suggestions.suggest(player.getName());
+            }
+        }
+    }
+}
+```
+
+### Conditional Suggestions Based on Previous Arguments
+
+```java
+@Command("enchant")
+public void enchantCommand(
+    Context ctx,
+    Player target,
+    Enchantment enchantment,
+    @Range(min = 1, max = 10) int level
+) {
+    ItemStack item = target.getInventory().getItemInMainHand();
+    item.addEnchantment(enchantment, level);
+}
+
+public class EnchantmentLevelProvider implements ArgumentProvider<Integer> {
+    @Override
+    public void suggestRich(@NotNull Context ctx,
+                           @NotNull InputArgument arg,
+                           @NotNull RichSuggestionsBuilder suggestions) {
+        // Parse the enchantment from previous argument
+        Enchantment enchant = ctx.parseArgument(1, Enchantment.class);
+        
+        if (enchant != null) {
+            int maxLevel = enchant.getMaxLevel();
+            
+            // Suggest valid levels for this enchantment
+            for (int i = 1; i <= maxLevel; i++) {
+                suggestions.suggest(i,
+                    SuggestionTooltip.text("Level " + i + " " + 
+                                         enchant.getKey().getKey()));
+            }
+        } else {
+            // Fallback suggestions
+            for (int i = 1; i <= 5; i++) {
+                suggestions.suggest(i);
+            }
+        }
+    }
+}
+```
+
+## See Also
+
+- [ArgumentProvider](/api/argument-provider) - Interface for creating custom argument types
+- [Context](/api/context) - Command execution context
+- [InputArgument](/api/input-argument) - Command argument representation

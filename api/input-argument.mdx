@@ -1,0 +1,387 @@
+---
+title: 'InputArgument'
+description: 'Represents a command argument with metadata, status tracking, and annotation access'
+---
+
+The `InputArgument` class encapsulates a single command argument, providing access to its value, presence status, parameter metadata, and annotations.
+
+## Overview
+
+`InputArgument` instances are passed to argument providers and contain:
+- The raw string value of the argument
+- Whether the argument was provided or not (Status)
+- Parameter metadata (name, type, annotations)
+- Access to forwarded annotations like `@Range` and `@Opt`
+- Additional data storage for custom providers
+
+## Class Definition
+
+```java
+public final class InputArgument
+```
+
+**Package:** `me.vaperion.blade.argument`
+
+## Constructors
+
+```java
+// Standard constructor
+public InputArgument(@NotNull BladeParameter parameter,
+                     @Nullable String value,
+                     @NotNull Status status)
+
+// Constructor without value/status (for internal use)
+public InputArgument(@NotNull BladeParameter parameter)
+```
+
+## Core Methods
+
+### Accessing the Value
+
+<ResponseField name="getValue()" type="String">
+  Returns the raw string value of the argument, or `null` if not present.
+  
+  ```java
+  String value = arg.getValue();
+  if (value != null) {
+      // Argument was provided
+  }
+  ```
+</ResponseField>
+
+<ResponseField name="requireValue()" type="String">
+  Returns the value of the argument, throwing an exception if not present.
+  
+  **Returns:** The non-null value of the argument
+  
+  **Throws:** `IllegalStateException` if the value is `null`
+  
+  ```java
+  @Override
+  public Player provide(@NotNull Context ctx, @NotNull InputArgument arg) {
+      String value = arg.requireValue(); // Throws if null
+      
+      Player player = Bukkit.getPlayer(value);
+      if (player == null) {
+          throw BladeParseError.recoverable(
+              "Player '" + value + "' not found."
+          );
+      }
+      
+      return player;
+  }
+  ```
+</ResponseField>
+
+### Checking Status
+
+<ResponseField name="getStatus()" type="Status">
+  Returns the presence status of the argument.
+  
+  ```java
+  Status status = arg.getStatus();
+  if (status == Status.PRESENT) {
+      // Argument was provided
+  } else if (status == Status.NOT_PRESENT) {
+      // Argument was not provided
+  }
+  
+  // Or use convenience method
+  if (status.isPresent()) {
+      // Process argument
+  }
+  ```
+</ResponseField>
+
+### Status Enum
+
+The `Status` enum indicates whether an argument was provided:
+
+<ResponseField name="Status.PRESENT" type="enum">
+  The argument was provided by the user.
+</ResponseField>
+
+<ResponseField name="Status.NOT_PRESENT" type="enum">
+  The argument was not provided by the user.
+</ResponseField>
+
+<ResponseField name="isPresent()" type="boolean">
+  Convenience method on Status enum to check if the argument was provided.
+  
+  ```java
+  if (arg.getStatus().isPresent()) {
+      // Argument was provided
+  }
+  ```
+</ResponseField>
+
+## Parameter Metadata
+
+<ResponseField name="getParameter()" type="BladeParameter">
+  Returns the parameter metadata containing name, type, and annotations.
+  
+  ```java
+  BladeParameter param = arg.getParameter();
+  String name = param.name();           // "target"
+  Class<?> type = param.type();         // Player.class
+  List<Annotation> data = param.data(); // All annotations
+  ```
+</ResponseField>
+
+## Optional Arguments
+
+<ResponseField name="optional()" type="Opt">
+  Returns the `@Opt` annotation if the argument is optional, or `null` otherwise.
+  
+  ```java
+  Opt opt = arg.optional();
+  if (opt != null) {
+      Opt.Type type = opt.value();
+      String custom = opt.custom();
+  }
+  ```
+</ResponseField>
+
+<ResponseField name="isOptionalWithType(Opt.Type type)" type="boolean">
+  Checks if the argument is optional with a specific type.
+  
+  <ParamField path="type" type="Opt.Type" required>
+    The optional type to check (EMPTY, CUSTOM, SENDER, etc.)
+  </ParamField>
+  
+  ```java
+  if (arg.isOptionalWithType(Opt.Type.SENDER)) {
+      // Return the sender as the default value
+      return ctx.sender().parseAs(Player.class);
+  }
+  ```
+</ResponseField>
+
+<ResponseField name="isOptionalAcceptingNull()" type="boolean">
+  Checks if the argument is optional and accepts `null` values.
+  
+  Returns `true` if:
+  - Type is `EMPTY`
+  - Type is `SENDER`
+  - Type is `EMPTY_OR_CUSTOM` with empty custom value
+  
+  ```java
+  if (arg.isOptionalAcceptingNull()) {
+      return null; // Null is acceptable
+  }
+  ```
+</ResponseField>
+
+## Range Constraints
+
+<ResponseField name="range()" type="Range">
+  Returns the `@Range` annotation if present, or `null` otherwise.
+  
+  ```java
+  Range range = arg.range();
+  if (range != null) {
+      double min = range.min(); // 0.0
+      double max = range.max(); // 100.0
+      
+      if (value < min || value > max) {
+          throw BladeParseError.recoverable(
+              "Value must be between " + min + " and " + max
+          );
+      }
+  }
+  ```
+</ResponseField>
+
+## Forwarded Annotations
+
+Access custom annotations marked with `@Forwarded`:
+
+<ResponseField name="annotation(Class<T> annotationClass)" type="T">
+  Returns the first annotation of the specified type, or `null` if not present.
+  
+  <ParamField path="annotationClass" type="Class<T>" required>
+    The annotation class to retrieve
+  </ParamField>
+  
+  ```java
+  // Custom annotation
+  @Forwarded
+  @Retention(RetentionPolicy.RUNTIME)
+  @Target(ElementType.PARAMETER)
+  public @interface MaxLength {
+      int value();
+  }
+  
+  // In provider
+  MaxLength maxLength = arg.annotation(MaxLength.class);
+  if (maxLength != null && value.length() > maxLength.value()) {
+      throw BladeParseError.recoverable(
+          "Value exceeds maximum length of " + maxLength.value()
+      );
+  }
+  ```
+</ResponseField>
+
+<ResponseField name="annotationList(Class<T> annotationClass)" type="List<T>">
+  Returns all annotations of the specified type.
+  
+  <ParamField path="annotationClass" type="Class<T>" required>
+    The annotation class to retrieve
+  </ParamField>
+  
+  ```java
+  List<CustomAnnotation> annotations = arg.annotationList(CustomAnnotation.class);
+  for (CustomAnnotation annotation : annotations) {
+      // Process each annotation
+  }
+  ```
+</ResponseField>
+
+## Data Storage
+
+<ResponseField name="getData()" type="List<String>">
+  Returns a mutable list for storing custom data.
+  
+  Providers can use this to store intermediate parsing results or metadata.
+  
+  ```java
+  List<String> data = arg.getData();
+  data.add("parsed");
+  data.add("additional-info");
+  ```
+</ResponseField>
+
+## Usage in Providers
+
+### Basic Provider
+
+```java
+public class IntegerProvider implements ArgumentProvider<Integer> {
+    @Override
+    public Integer provide(@NotNull Context ctx, @NotNull InputArgument arg) {
+        // Get the value (throws if not present)
+        String value = arg.requireValue();
+        
+        try {
+            int result = Integer.parseInt(value);
+            
+            // Check for @Range annotation
+            Range range = arg.range();
+            if (range != null) {
+                if (result < range.min() || result > range.max()) {
+                    throw BladeParseError.recoverable(
+                        "Value must be between " + range.min() + 
+                        " and " + range.max()
+                    );
+                }
+            }
+            
+            return result;
+        } catch (NumberFormatException e) {
+            throw BladeParseError.recoverable(
+                "'" + value + "' is not a valid integer."
+            );
+        }
+    }
+}
+```
+
+### Provider with Optional Arguments
+
+```java
+public class PlayerProvider implements ArgumentProvider<Player> {
+    @Override
+    public boolean handlesNullInputArguments() {
+        return true; // Handle optional arguments
+    }
+    
+    @Override
+    public Player provide(@NotNull Context ctx, @NotNull InputArgument arg) {
+        // Check if argument is optional with SENDER type
+        if (arg.isOptionalWithType(Opt.Type.SENDER)) {
+            if (arg.getStatus() == Status.NOT_PRESENT) {
+                // Return sender as default
+                return ctx.sender().parseAs(Player.class);
+            }
+        }
+        
+        // Parse normally
+        String value = arg.requireValue();
+        Player player = Bukkit.getPlayer(value);
+        
+        if (player == null) {
+            throw BladeParseError.recoverable(
+                "Player '" + value + "' not found."
+            );
+        }
+        
+        return player;
+    }
+}
+```
+
+### Provider with Custom Annotations
+
+```java
+// Define a forwarded annotation
+@Forwarded
+@Retention(RetentionPolicy.RUNTIME)
+@Target(ElementType.PARAMETER)
+public @interface Pattern {
+    String value();
+}
+
+// Use in provider
+public class StringProvider implements ArgumentProvider<String> {
+    @Override
+    public String provide(@NotNull Context ctx, @NotNull InputArgument arg) {
+        String value = arg.requireValue();
+        
+        // Check for @Pattern annotation
+        Pattern pattern = arg.annotation(Pattern.class);
+        if (pattern != null) {
+            if (!value.matches(pattern.value())) {
+                throw BladeParseError.recoverable(
+                    "Value must match pattern: " + pattern.value()
+                );
+            }
+        }
+        
+        return value;
+    }
+}
+
+// Use in command
+@Command("setname")
+public void setName(Context ctx, 
+                   @Pattern("[a-zA-Z0-9_]+") String name) {
+    // name is guaranteed to match the pattern
+}
+```
+
+## Command Parameter Example
+
+Using InputArgument concepts in command parameters:
+
+```java
+@Command("give")
+public void giveCommand(
+    Context ctx,
+    Player target,
+    Material material,
+    @Range(min = 1, max = 64) @Opt("1") int amount
+) {
+    // amount is optional with default "1"
+    // amount is constrained between 1 and 64
+    
+    ItemStack item = new ItemStack(material, amount);
+    target.getInventory().addItem(item);
+}
+```
+
+## See Also
+
+- [Context](/api/context) - Command execution context
+- [ArgumentProvider](/api/argument-provider) - Interface for creating custom argument types
+- [Opt Annotation](/annotations/opt) - Making arguments optional
+- [Range Annotation](/annotations/range) - Constraining numeric values

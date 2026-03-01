@@ -1,0 +1,269 @@
+---
+title: Permission System
+description: Use the @Permission annotation and custom permission predicates
+---
+
+Blade provides a flexible permission system that supports both simple permission strings and custom permission predicates for advanced use cases.
+
+## Basic Permissions
+
+Use the `@Permission` annotation to require permissions for commands:
+
+```java
+@Command("example")
+@Permission("myplugin.example")
+public void example(@Sender Player player) {
+    player.sendMessage("You have permission!");
+}
+```
+
+## Permission Annotation
+
+The `@Permission` annotation has several options:
+
+```java
+public @interface Permission {
+    /**
+     * The required permission.
+     * 
+     * Special values:
+     * - "op" - Requires the sender to be an operator
+     * - "console" - Requires the sender to be the console
+     * 
+     * If you prefix the permission with "@", it will be treated as a
+     * permission predicate (see Custom Permission Predicates below).
+     */
+    @NotNull
+    String value() default "";
+
+    /**
+     * The message that gets displayed if the player does not have permission.
+     * 
+     * If not set, the default message from the Blade configuration will be used.
+     */
+    @NotNull
+    String message() default "";
+}
+```
+
+## Special Permission Values
+
+### Operator Permission
+
+Require the sender to be a server operator:
+
+```java
+@Command("admin")
+@Permission("op")
+public void adminCommand(@Sender CommandSender sender) {
+    sender.sendMessage("You are an operator!");
+}
+```
+
+### Console Only
+
+Restrict commands to console only:
+
+```java
+@Command("shutdown")
+@Permission("console")
+public void shutdownCommand(@Sender ConsoleCommandSender console) {
+    console.sendMessage("Shutting down server...");
+}
+```
+
+## Custom Permission Messages
+
+Provide a custom message when permission is denied:
+
+```java
+@Command("vip")
+@Permission(value = "myplugin.vip", message = "You must be a VIP member to use this command!")
+public void vipCommand(@Sender Player player) {
+    player.sendMessage("Welcome, VIP!");
+}
+```
+
+## Default Permission Message
+
+Set a default permission message for all commands in the Blade configuration:
+
+```java
+Blade.forPlatform(new BladeBukkitPlatform(this))
+    .config(cfg -> {
+        cfg.defaultPermissionMessage("You don't have permission to use this command!");
+    })
+    .build();
+```
+
+## Custom Permission Predicates
+
+For advanced permission logic, you can create custom permission predicates. These are registered with an ID and can be referenced in the `@Permission` annotation using the `@` prefix.
+
+### PermissionPredicate Interface
+
+```java
+@FunctionalInterface
+public interface PermissionPredicate extends BiPredicate<Context, BladeCommand> {
+    boolean test(@NotNull Context context, @NotNull BladeCommand command);
+}
+```
+
+### Creating a Custom Predicate
+
+Here's an example of a predicate that checks if a player is in a specific world:
+
+```java
+public class WorldPermissionPredicate implements PermissionPredicate {
+    private final String worldName;
+    
+    public WorldPermissionPredicate(String worldName) {
+        this.worldName = worldName;
+    }
+    
+    @Override
+    public boolean test(@NotNull Context context, @NotNull BladeCommand command) {
+        Object sender = context.sender().sender();
+        
+        if (!(sender instanceof Player player)) {
+            return false; // Only players can be in worlds
+        }
+        
+        return player.getWorld().getName().equalsIgnoreCase(worldName);
+    }
+}
+```
+
+### Registering Permission Predicates
+
+Register your custom predicates in the Blade builder:
+
+```java
+Blade.forPlatform(new BladeBukkitPlatform(this))
+    .permission(adder -> {
+        adder.predicate("survival", new WorldPermissionPredicate("world"));
+        adder.predicate("nether", new WorldPermissionPredicate("world_nether"));
+        adder.predicate("admin", (context, command) -> {
+            // Inline predicate
+            Object sender = context.sender().sender();
+            return sender instanceof Player player && 
+                   player.hasPermission("myplugin.admin");
+        });
+    })
+    .build();
+```
+
+### Using Permission Predicates
+
+Reference predicates in the `@Permission` annotation using the `@` prefix:
+
+```java
+@Command("survival-only")
+@Permission("@survival")
+public void survivalCommand(@Sender Player player) {
+    player.sendMessage("You are in the survival world!");
+}
+
+@Command("nether-only")
+@Permission("@nether")
+public void netherCommand(@Sender Player player) {
+    player.sendMessage("You are in the nether!");
+}
+
+@Command("admin-panel")
+@Permission("@admin")
+public void adminPanel(@Sender Player player) {
+    // Open admin panel
+}
+```
+
+## Advanced Predicate Examples
+
+### Time-Based Permissions
+
+Restrict commands to certain times of day:
+
+```java
+adder.predicate("daytime", (context, command) -> {
+    Object sender = context.sender().sender();
+    if (!(sender instanceof Player player)) return false;
+    
+    long time = player.getWorld().getTime();
+    return time >= 0 && time < 13000; // Daytime in Minecraft
+});
+```
+
+### Combining Permissions
+
+Create predicates that combine multiple conditions:
+
+```java
+adder.predicate("vip-and-survival", (context, command) -> {
+    Object sender = context.sender().sender();
+    if (!(sender instanceof Player player)) return false;
+    
+    boolean hasVip = player.hasPermission("myplugin.vip");
+    boolean inSurvival = player.getWorld().getName().equalsIgnoreCase("world");
+    
+    return hasVip && inSurvival;
+});
+```
+
+### Data-Based Permissions
+
+Check against external data sources:
+
+```java
+public class RankPredicate implements PermissionPredicate {
+    private final PlayerDataManager dataManager;
+    private final String requiredRank;
+    
+    public RankPredicate(PlayerDataManager dataManager, String requiredRank) {
+        this.dataManager = dataManager;
+        this.requiredRank = requiredRank;
+    }
+    
+    @Override
+    public boolean test(@NotNull Context context, @NotNull BladeCommand command) {
+        Object sender = context.sender().sender();
+        if (!(sender instanceof Player player)) return false;
+        
+        PlayerData data = dataManager.getData(player.getUniqueId());
+        return data.getRank().equals(requiredRank);
+    }
+}
+
+// Register multiple rank predicates
+.permission(adder -> {
+    adder.predicate("rank-vip", new RankPredicate(dataManager, "VIP"));
+    adder.predicate("rank-mvp", new RankPredicate(dataManager, "MVP"));
+    adder.predicate("rank-admin", new RankPredicate(dataManager, "ADMIN"));
+})
+```
+
+## Permission Predicate Behavior
+
+- If a permission predicate is referenced but not registered, the command will be executed **without any permission check**
+- Predicate IDs are case-insensitive
+- You can combine predicates with regular permissions by using multiple `@Permission` annotations (though note that only one `@Permission` annotation is supported per command)
+
+## Best Practices
+
+1. **Use clear predicate names**: Make predicate IDs descriptive (`"admin-in-survival"` instead of `"check1"`)
+2. **Handle null senders**: Always check if the sender is the expected type before casting
+3. **Return false for invalid senders**: Don't throw exceptions; just return `false`
+4. **Keep predicates simple**: Complex logic should be in separate classes
+5. **Document your predicates**: Comment what each predicate checks
+
+## Permission Checking in Code
+
+You can manually check permissions using the `BladeCommand` object:
+
+```java
+BladeCommand command = // ... get command reference
+Context context = // ... create context
+
+boolean hasPermission = command.hasPermission(context);
+```
+
+This respects both regular permissions and custom predicates.

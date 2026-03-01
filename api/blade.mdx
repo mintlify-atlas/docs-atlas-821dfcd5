@@ -1,0 +1,169 @@
+---
+title: "Blade"
+description: "The main class of the Blade command framework"
+---
+
+## Overview
+
+The `Blade` class is the core of the Blade command framework. It manages command registration, argument providers, sender providers, and permission predicates. You create a Blade instance using the builder pattern through `forPlatform()`.
+
+## Creating a Blade Instance
+
+### forPlatform()
+
+Create a new Blade builder for the specified platform.
+
+```java
+public static <Text, Plugin, Server> Builder<Text, Plugin, Server> forPlatform(
+    @NotNull BladePlatform<Text, Plugin, Server> platform
+)
+```
+
+<ParamField path="platform" type="BladePlatform<Text, Plugin, Server>" required>
+  The platform implementation (e.g., BukkitBladePlatform, VelocityBladePlatform)
+</ParamField>
+
+**Returns:** A new `Builder` instance for configuring Blade
+
+**Example:**
+
+```java
+Blade blade = Blade.forPlatform(new BukkitBladePlatform(plugin))
+    .config(config -> {
+        config.setOverrideCommands(true);
+        config.setVerbose(true);
+    })
+    .bind(binder -> {
+        binder.bind(Player.class, new PlayerArgument());
+    })
+    .build();
+```
+
+## Command Registration
+
+### register()
+
+Register command classes with Blade. Commands are identified by methods annotated with `@Command`.
+
+#### Register with instance
+
+```java
+public Blade register(@NotNull Object instance)
+```
+
+<ParamField path="instance" type="Object" required>
+  An instance of a class containing command methods
+</ParamField>
+
+**Returns:** The Blade instance for method chaining
+
+**Example:**
+
+```java
+blade.register(new PlayerCommands());
+```
+
+#### Register with class only
+
+```java
+public Blade register(@NotNull Class<?> clazz)
+```
+
+<ParamField path="clazz" type="Class<?>" required>
+  A class containing static command methods
+</ParamField>
+
+**Returns:** The Blade instance for method chaining
+
+**Example:**
+
+```java
+blade.register(AdminCommands.class);
+```
+
+#### Register with instance and class
+
+```java
+public Blade register(@Nullable Object instance, @NotNull Class<?> clazz)
+```
+
+<ParamField path="instance" type="Object">
+  An instance to use for non-static methods (can be null for static-only classes)
+</ParamField>
+
+<ParamField path="clazz" type="Class<?>" required>
+  The class to scan for command methods
+</ParamField>
+
+**Returns:** The Blade instance for method chaining
+
+### registerPackage()
+
+Register all classes in a package that contain command methods.
+
+```java
+public Blade registerPackage(@NotNull Class<?> clazz, @NotNull String packageName)
+```
+
+<ParamField path="clazz" type="Class<?>" required>
+  A class used as a reference point for package scanning
+</ParamField>
+
+<ParamField path="packageName" type="String" required>
+  The package name to scan (e.g., "com.example.commands")
+</ParamField>
+
+**Returns:** The Blade instance for method chaining
+
+**Example:**
+
+```java
+blade.registerPackage(MyPlugin.class, "com.example.plugin.commands");
+```
+
+## Usage Example
+
+Here's a complete example showing the typical Blade setup flow:
+
+```java
+import me.vaperion.blade.Blade;
+import me.vaperion.blade.platform.bukkit.BukkitBladePlatform;
+
+public class MyPlugin extends JavaPlugin {
+    private Blade blade;
+    
+    @Override
+    public void onEnable() {
+        // Create and configure Blade
+        blade = Blade.forPlatform(new BukkitBladePlatform(this))
+            .config(config -> {
+                config.setOverrideCommands(true);
+                config.setDefaultPermissionMessage("You don't have permission!");
+                config.setVerbose(true);
+            })
+            .bind(binder -> {
+                // Bind custom argument providers
+                binder.bind(Player.class, new PlayerArgument());
+                binder.bind(World.class, new WorldArgument());
+            })
+            .permission(adder -> {
+                // Register custom permission predicates
+                adder.predicate("admin", (ctx, cmd) -> 
+                    ctx.sender().hasPermission("myplugin.admin")
+                );
+            })
+            .build();
+        
+        // Register commands
+        blade.register(new PlayerCommands());
+        blade.register(new AdminCommands());
+        blade.registerPackage(MyPlugin.class, "com.example.plugin.commands");
+    }
+}
+```
+
+## See Also
+
+- [Builder](/api/blade-builder) - Configure Blade before building
+- [BladeConfiguration](/api/blade-configuration) - Configuration options
+- [Command Registration Guide](/core-concepts/commands) - Learn about creating commands

@@ -1,97 +1,100 @@
 ---
-title: "Introduction"
-description: "Welcome to the new home for your documentation"
+title: Introduction to Blade
+description: Easy-to-use command framework based on annotations for Minecraft and game servers
 ---
 
-## Setting up
+Blade is a powerful, annotation-based command framework that simplifies command creation for Minecraft and game server platforms. With Blade, you can build sophisticated command systems using simple Java annotations, letting the framework handle parsing, validation, and execution.
 
-Get your documentation site up and running in minutes.
+## What is Blade?
 
-<Card
-  title="Start here"
-  icon="rocket"
-  href="/quickstart"
-  horizontal
->
-  Follow our three step quickstart guide.
-</Card>
+Blade is an easy-to-use command framework that allows you to create commands using annotations instead of complex boilerplate code. It supports multiple platforms including Bukkit, Paper, Fabric, Velocity, Minestom, and Hytale.
 
-## Make it yours
+<Note>
+  Blade is now published to Maven Central under the group ID `io.github.vaperion.blade`. Versioning has been reset to 1.0.0 for this release.
+</Note>
 
-Design a docs site that looks great and empowers your users.
+## Key Features
 
-<Columns cols={2}>
-  <Card
-    title="Edit locally"
-    icon="pen-to-square"
-    href="/development"
-  >
-    Edit your docs locally and preview them in real time.
+- **Annotation-Based**: Define commands using simple `@Command` annotations
+- **Multi-Platform**: Support for Bukkit, Paper, Fabric, Velocity, Minestom, and Hytale
+- **Type-Safe**: Automatic argument parsing with type safety
+- **Flexible Arguments**: Support for optional parameters, default values, and custom types
+- **Command Flags**: Built-in support for command flags (e.g., `-s` for silent mode)
+- **Async Support**: Execute commands asynchronously with a single annotation
+- **Custom Providers**: Extend the framework with custom argument and sender providers
+- **Permission Support**: Integrated permission checking with customizable messages
+- **Tab Completion**: Automatic tab completion for commands and arguments
+- **Brigadier Integration**: Native Brigadier support for Paper and Fabric platforms
+
+## Supported Platforms
+
+<CardGroup cols={2}>
+  <Card title="Bukkit" icon="cube" href="/platforms/bukkit">
+    General Bukkit support (Java 8+)
   </Card>
-  <Card
-    title="Customize your site"
-    icon="palette"
-    href="/essentials/settings"
-  >
-    Customize the design and colors of your site to match your brand.
+  <Card title="Paper" icon="file" href="/platforms/paper">
+    Enhanced Paper support with Brigadier integration
   </Card>
-    <Card
-    title="Set up navigation"
-    icon="map"
-    href="/essentials/navigation"
-  >
-    Organize your docs to help users find what they need and succeed with your product.
+  <Card title="Fabric" icon="thread" href="/platforms/fabric">
+    Fabric modding platform support
   </Card>
-  <Card
-    title="API documentation"
-    icon="terminal"
-    href="/api-reference/introduction"
-  >
-    Auto-generate API documentation from OpenAPI specifications.
+  <Card title="Velocity" icon="bolt" href="/platforms/velocity">
+    Velocity proxy server support
   </Card>
-</Columns>
+  <Card title="Minestom" icon="server" href="/platforms/minestom">
+    Minestom server implementation support
+  </Card>
+  <Card title="Hytale" icon="gamepad" href="/platforms/hytale">
+    Hytale game server support
+  </Card>
+</CardGroup>
 
-## Create beautiful pages
+## Quick Example
 
-Everything you need to create world-class documentation.
+Here's a simple example of what a Blade command looks like:
 
-<Columns cols={2}>
-  <Card
-    title="Write with MDX"
-    icon="pen-fancy"
-    href="/essentials/markdown"
-  >
-    Use MDX to style your docs pages.
-  </Card>
-  <Card
-    title="Code samples"
-    icon="code"
-    href="/essentials/code"
-  >
-    Add sample code to demonstrate how to use your product.
-  </Card>
-  <Card
-    title="Images"
-    icon="image"
-    href="/essentials/images"
-  >
-    Display images and other media.
-  </Card>
-  <Card
-    title="Reusable snippets"
-    icon="recycle"
-    href="/essentials/reusable-snippets"
-  >
-    Write once and reuse across your docs.
-  </Card>
-</Columns>
+```java
+public class PayCommand {
+    @Command("pay")
+    @Description("Send money to another player")
+    @Permission("economy.pay")
+    public void pay(
+        @Sender Player sender,
+        @Name("player") Player target,
+        @Name("amount") @Range(min = 1, max = 10000) int amount,
+        @Flag('s') boolean silent
+    ) {
+        // Your command logic here
+        sender.sendMessage("Sent $" + amount + " to " + target.getName());
+        
+        if (!silent) {
+            target.sendMessage("Received $" + amount + " from " + sender.getName());
+        }
+    }
+}
+```
 
-## Need inspiration?
+## Getting Started
 
-<Card
-  title="See complete examples"
-  icon="stars"
-  href="https://mintlify.com/customers"
->
-  Browse our showcase of exceptional documentation sites.
-</Card>
+<CardGroup cols={2}>
+  <Card title="Installation" icon="download" href="/installation">
+    Add Blade to your project with Maven or Gradle
+  </Card>
+  <Card title="Quick Start" icon="rocket" href="/quickstart">
+    Create your first command in minutes
+  </Card>
+  <Card title="Core Concepts" icon="book" href="/core-concepts/commands">
+    Learn about commands, arguments, and providers
+  </Card>
+  <Card title="API Reference" icon="code" href="/api/blade">
+    Explore the complete API documentation
+  </Card>
+</CardGroup>
+
+## Version Information
+
+This documentation covers Blade version 1.0.23. The project follows [Semantic Versioning](https://semver.org/).
+
+<Warning>
+  Blade has gone through a large internal refactor and some APIs have changed from previous versions. Please review the migration guide if you're upgrading from an older version.
+</Warning>

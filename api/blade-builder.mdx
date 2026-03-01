@@ -1,0 +1,367 @@
+---
+title: "Blade.Builder"
+description: "Configure and build a Blade instance using the builder pattern"
+---
+
+## Overview
+
+The `Blade.Builder` class provides a fluent API for configuring Blade before building the final instance. It allows you to configure settings, bind argument providers, register sender providers, and define custom permission predicates.
+
+## Builder Methods
+
+### config()
+
+Configure Blade settings through a consumer function.
+
+```java
+public Builder<Text, Plugin, Server> config(
+    @NotNull Consumer<BladeConfiguration<Text>> consumer
+)
+```
+
+<ParamField path="consumer" type="Consumer<BladeConfiguration<Text>>" required>
+  A function that receives the BladeConfiguration instance for modification
+</ParamField>
+
+**Returns:** The builder instance for method chaining
+
+**Example:**
+
+```java
+Blade.forPlatform(platform)
+    .config(config -> {
+        config.setOverrideCommands(true);
+        config.setVerbose(true);
+        config.setDefaultPermissionMessage("No permission!");
+        config.setExecutionTimeWarningThreshold(50L);
+    })
+```
+
+### bind()
+
+Register argument and sender providers through the Binder interface.
+
+```java
+public Builder<Text, Plugin, Server> bind(
+    @NotNull Consumer<Binder<Text, Plugin, Server>> consumer
+)
+```
+
+<ParamField path="consumer" type="Consumer<Binder>" required>
+  A function that receives the Binder instance for registering providers
+</ParamField>
+
+**Returns:** The builder instance for method chaining
+
+**Example:**
+
+```java
+Blade.forPlatform(platform)
+    .bind(binder -> {
+        binder.bind(Player.class, new PlayerArgument());
+        binder.bind(World.class, new WorldArgument());
+        binder.bindSender(BukkitSender.class, new BukkitSenderProvider());
+    })
+```
+
+### permission()
+
+Register custom permission predicates.
+
+```java
+public Builder<Text, Plugin, Server> permission(
+    @NotNull Consumer<PredicateAdder<Text, Plugin, Server>> consumer
+)
+```
+
+<ParamField path="consumer" type="Consumer<PredicateAdder>" required>
+  A function that receives the PredicateAdder instance for registering predicates
+</ParamField>
+
+**Returns:** The builder instance for method chaining
+
+**Example:**
+
+```java
+Blade.forPlatform(platform)
+    .permission(adder -> {
+        adder.predicate("admin", (ctx, cmd) -> 
+            ctx.sender().hasPermission("myplugin.admin")
+        );
+        adder.predicate("vip", (ctx, cmd) -> 
+            isVIP(ctx.sender())
+        );
+    })
+```
+
+### build()
+
+Build and initialize the Blade instance.
+
+```java
+public Blade build()
+```
+
+**Returns:** A new configured Blade instance
+
+**Example:**
+
+```java
+Blade blade = Blade.forPlatform(platform)
+    .config(config -> { /* ... */ })
+    .bind(binder -> { /* ... */ })
+    .build();
+```
+
+## Binder Inner Class
+
+The `Binder` class is used within the `bind()` method to register argument and sender providers.
+
+### bind() - Argument Provider
+
+Register an argument provider for a specific type.
+
+```java
+public <T> void bind(
+    @NotNull Class<T> type,
+    @NotNull ArgumentProvider<T> provider,
+    @NotNull Class<? extends Annotation>... annotations
+)
+```
+
+<ParamField path="type" type="Class<T>" required>
+  The type this provider handles
+</ParamField>
+
+<ParamField path="provider" type="ArgumentProvider<T>" required>
+  The provider implementation
+</ParamField>
+
+<ParamField path="annotations" type="Class<? extends Annotation>...">
+  Required annotations for this binding to match
+</ParamField>
+
+**Example:**
+
+```java
+binder.bind(Player.class, new PlayerArgument());
+binder.bind(String.class, new GreedyStringArgument(), Greedy.class);
+```
+
+### unsafeBind() - Argument Provider
+
+Register an argument provider without type safety (useful for generic types).
+
+```java
+public <T> void unsafeBind(
+    @NotNull Class<T> type,
+    @NotNull ArgumentProvider<?> provider,
+    @NotNull Class<? extends Annotation>... annotations
+)
+```
+
+<ParamField path="type" type="Class<T>" required>
+  The type this provider handles
+</ParamField>
+
+<ParamField path="provider" type="ArgumentProvider<?>" required>
+  The provider implementation (type-unsafe)
+</ParamField>
+
+<ParamField path="annotations" type="Class<? extends Annotation>...">
+  Required annotations for this binding to match
+</ParamField>
+
+### release() - Remove Argument Provider
+
+Remove a previously registered argument provider.
+
+```java
+public <T> void release(
+    @NotNull Class<T> type,
+    @NotNull Class<? extends Annotation>... annotations
+)
+```
+
+<ParamField path="type" type="Class<T>" required>
+  The type to unbind
+</ParamField>
+
+<ParamField path="annotations" type="Class<? extends Annotation>...">
+  The annotations that must match for removal
+</ParamField>
+
+**Example:**
+
+```java
+binder.release(String.class); // Remove default String provider
+```
+
+### bindSender()
+
+Register a sender provider for a specific type.
+
+```java
+public <T> void bindSender(
+    @NotNull Class<T> type,
+    @NotNull SenderProvider<T> provider
+)
+```
+
+<ParamField path="type" type="Class<T>" required>
+  The sender type this provider handles
+</ParamField>
+
+<ParamField path="provider" type="SenderProvider<T>" required>
+  The provider implementation
+</ParamField>
+
+**Example:**
+
+```java
+binder.bindSender(Player.class, (ctx, sender) -> {
+    if (sender.isPlayer()) {
+        return sender.as(Player.class);
+    }
+    throw BladeParseError.fatal("Only players can use this command!");
+});
+```
+
+### unsafeBindSender()
+
+Register a sender provider without type safety.
+
+```java
+public <T> void unsafeBindSender(
+    @NotNull Class<T> type,
+    @NotNull SenderProvider<?> provider
+)
+```
+
+<ParamField path="type" type="Class<T>" required>
+  The sender type this provider handles
+</ParamField>
+
+<ParamField path="provider" type="SenderProvider<?>" required>
+  The provider implementation (type-unsafe)
+</ParamField>
+
+### releaseSender()
+
+Remove a previously registered sender provider.
+
+```java
+public <T> void releaseSender(@NotNull Class<T> type)
+```
+
+<ParamField path="type" type="Class<T>" required>
+  The sender type to unbind
+</ParamField>
+
+## PredicateAdder Inner Class
+
+The `PredicateAdder` class is used within the `permission()` method to register custom permission predicates.
+
+### predicate()
+
+Register a custom permission predicate with an identifier.
+
+```java
+public void predicate(
+    @NotNull String id,
+    @NotNull PermissionPredicate predicate
+)
+```
+
+<ParamField path="id" type="String" required>
+  A unique identifier for this predicate (case-insensitive)
+</ParamField>
+
+<ParamField path="predicate" type="PermissionPredicate" required>
+  A BiPredicate that tests if a context has permission for a command
+</ParamField>
+
+**Example:**
+
+```java
+adder.predicate("admin", (ctx, cmd) -> {
+    return ctx.sender().hasPermission("myplugin.admin");
+});
+
+adder.predicate("op", (ctx, cmd) -> {
+    return ctx.sender().isOp();
+});
+```
+
+## Complete Example
+
+Here's a comprehensive example showing all builder capabilities:
+
+```java
+import me.vaperion.blade.Blade;
+import me.vaperion.blade.platform.bukkit.BukkitBladePlatform;
+
+public class MyPlugin extends JavaPlugin {
+    @Override
+    public void onEnable() {
+        Blade blade = Blade.forPlatform(new BukkitBladePlatform(this))
+            // Configure Blade settings
+            .config(config -> {
+                config.setOverrideCommands(true);
+                config.setVerbose(true);
+                config.setDefaultPermissionMessage("You lack permission!");
+                config.setExecutionTimeWarningThreshold(50L);
+                config.setStrictArgumentCount(true);
+            })
+            
+            // Bind argument and sender providers
+            .bind(binder -> {
+                // Argument providers
+                binder.bind(Player.class, new PlayerArgument());
+                binder.bind(World.class, new WorldArgument());
+                binder.bind(Material.class, new MaterialArgument());
+                
+                // Sender providers
+                binder.bindSender(Player.class, (ctx, sender) -> {
+                    if (!sender.isPlayer()) {
+                        throw BladeParseError.fatal("Only players!");
+                    }
+                    return sender.as(Player.class);
+                });
+                
+                // Release default providers
+                binder.release(String.class);
+                binder.bind(String.class, new CustomStringArgument());
+            })
+            
+            // Register custom permission predicates
+            .permission(adder -> {
+                adder.predicate("admin", (ctx, cmd) -> 
+                    ctx.sender().hasPermission("myplugin.admin")
+                );
+                
+                adder.predicate("vip", (ctx, cmd) -> {
+                    Player player = ctx.sender().as(Player.class);
+                    return player != null && hasVIPRank(player);
+                });
+                
+                adder.predicate("inGame", (ctx, cmd) -> 
+                    ctx.sender().isPlayer()
+                );
+            })
+            
+            // Build the Blade instance
+            .build();
+        
+        // Register commands after building
+        blade.register(new PlayerCommands());
+        blade.registerPackage(MyPlugin.class, "com.example.commands");
+    }
+}
+```
+
+## See Also
+
+- [Blade](/api/blade) - Main Blade class documentation
+- [BladeConfiguration](/api/blade-configuration) - Configuration options reference
+- [Argument Providers](/api/argument-provider) - Learn about creating custom argument providers

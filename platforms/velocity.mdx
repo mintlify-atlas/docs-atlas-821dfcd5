@@ -1,0 +1,142 @@
+---
+title: Velocity
+description: Setup and usage guide for Blade on Velocity
+---
+
+The Velocity platform provides Blade command framework support for Velocity proxy servers.
+
+## Requirements
+
+- Java 17 or higher (required by Velocity)
+- Velocity proxy server
+
+## Installation
+
+<Tabs>
+  <Tab title="Maven">
+    ```xml
+    <dependencies>
+        <dependency>
+            <groupId>io.github.vaperion.blade</groupId>
+            <artifactId>velocity</artifactId>
+            <version>VERSION</version>
+            <scope>provided</scope>
+        </dependency>
+    </dependencies>
+    ```
+  </Tab>
+  <Tab title="Gradle (Groovy)">
+    ```groovy
+    dependencies {
+        implementation 'io.github.vaperion.blade:velocity:VERSION'
+    }
+    ```
+  </Tab>
+  <Tab title="Gradle (Kotlin)">
+    ```kotlin
+    dependencies {
+        implementation("io.github.vaperion.blade:velocity:VERSION")
+    }
+    ```
+  </Tab>
+</Tabs>
+
+Replace `VERSION` with the latest version available on Maven Central.
+
+## Setup
+
+Initialize Blade in your plugin's initialization method using `BladeVelocityPlatform`. You'll need to inject both the `PluginContainer` and `ProxyServer`:
+
+```java
+@Plugin(
+    id = "myplugin",
+    name = "My Plugin",
+    version = "1.0.0"
+)
+public class MyVelocityPlugin {
+    private final PluginContainer pluginContainer;
+    private final ProxyServer proxyServer;
+
+    @Inject
+    public MyVelocityPlugin(PluginContainer pluginContainer, ProxyServer proxyServer) {
+        this.pluginContainer = pluginContainer;
+        this.proxyServer = proxyServer;
+    }
+
+    @Subscribe
+    public void onProxyInitialization(ProxyInitializeEvent event) {
+        Blade.forPlatform(new BladeVelocityPlatform(pluginContainer, proxyServer))
+            .config(cfg -> {
+                cfg.commandQualifier("myplugin"); // Optional, defaults to plugin ID
+                cfg.defaultPermissionMessage(Component.text("No permission!", NamedTextColor.RED));
+            })
+            .bind(binder -> {
+                // Optional: Register custom argument providers
+                binder.bind(Player.class, new MyCustomPlayerProvider());
+            })
+            .build()
+            // Register all commands in a package (including sub-packages):
+            .registerPackage(MyVelocityPlugin.class, "com.example.commands")
+            // or register them individually:
+            .register(ExampleCommand.class)
+        ;
+    }
+}
+```
+
+## Features
+
+### Built-in Argument Types
+
+The Velocity platform includes a built-in argument provider for:
+
+- `Player` - Connected player lookup
+- `ConsoleCommandSource` - Console sender type
+
+### Adventure Components
+
+Velocity uses Kyori Adventure's `Component` system for all text and messages. Configure permission messages and other text using Components:
+
+```java
+cfg.defaultPermissionMessage(
+    Component.text("You don't have permission!", NamedTextColor.RED)
+);
+```
+
+### Example Command
+
+```java
+public class SendCommand {
+    @Command("send")
+    @Description("Send a player to a server")
+    @Permission("myplugin.send")
+    public void send(
+        @Sender CommandSource sender,
+        @Name("player") Player player,
+        @Name("server") String serverName
+    ) {
+        Optional<RegisteredServer> server = player.getServer()
+            .getServer()
+            .getServer(serverName);
+            
+        if (server.isPresent()) {
+            player.createConnectionRequest(server.get()).fireAndForget();
+            sender.sendMessage(
+                Component.text("Sent " + player.getUsername() + " to " + serverName,
+                    NamedTextColor.GREEN)
+            );
+        } else {
+            sender.sendMessage(
+                Component.text("Server not found!", NamedTextColor.RED)
+            );
+        }
+    }
+}
+```
+
+## Next Steps
+
+- Learn about [creating commands](/core-concepts/commands)
+- Explore [argument providers](/api/argument-provider)
+- Understand [permissions](/advanced/permissions)
+- Read about [Adventure Components](https://docs.advntr.dev/)

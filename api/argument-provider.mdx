@@ -1,0 +1,306 @@
+---
+title: ArgumentProvider
+description: Interface for converting command arguments into specific types
+---
+
+`ArgumentProvider<T>` is a functional interface that converts command input arguments into specific types. It provides the core argument parsing mechanism in Blade, handling everything from simple types like integers to complex custom objects.
+
+## Interface Definition
+
+```java
+@FunctionalInterface
+public interface ArgumentProvider<T> {
+    @Nullable
+    T provide(@NotNull Context ctx, @NotNull InputArgument arg) throws BladeParseError;
+}
+```
+
+## Core Method
+
+### provide()
+
+Converts a command input argument into the target type.
+
+<ParamField path="ctx" type="Context" required>
+  The command execution context containing sender information and metadata
+</ParamField>
+
+<ParamField path="arg" type="InputArgument" required>
+  The input argument containing the raw value and parameter metadata
+</ParamField>
+
+<ResponseField name="return" type="T">
+  The converted value, or `null` if conversion failed
+</ResponseField>
+
+**Throws:** `BladeParseError` if an error occurs during conversion
+
+#### Example Implementation
+
+```java
+public class IntArgument implements ArgumentProvider<Integer> {
+    @Override
+    public Integer provide(@NotNull Context ctx, @NotNull InputArgument arg) 
+            throws BladeParseError {
+        try {
+            return Integer.parseInt(arg.requireValue());
+        } catch (NumberFormatException e) {
+            throw BladeParseError.fatal(
+                "'" + arg.value() + "' is not a valid whole number."
+            );
+        }
+    }
+}
+```
+
+## Default Methods
+
+### handlesNullInputArguments()
+
+Determines whether this provider should be called when the argument value is null.
+
+```java
+default boolean handlesNullInputArguments() {
+    return false;
+}
+```
+
+<ResponseField name="return" type="boolean">
+  `true` if the provider handles null arguments, `false` otherwise (default)
+</ResponseField>
+
+This is useful for providers that implement logic for optional arguments, particularly when handling `@Opt(Type.SENDER)` where the argument might default to the command sender.
+
+#### Example
+
+```java
+public class PlayerArgument implements ArgumentProvider<Player> {
+    @Override
+    public boolean handlesNullInputArguments() {
+        return true; // Handle @Opt(Type.SENDER) case
+    }
+
+    @Override
+    public Player provide(@NotNull Context ctx, @NotNull InputArgument arg) 
+            throws BladeParseError {
+        // Handle case where argument is not provided but defaults to sender
+        if (arg.isOptionalWithType(Opt.Type.SENDER) && !arg.status().isPresent()) {
+            return ctx.sender().parseAs(Player.class);
+        }
+
+        // Handle explicit null for @Opt arguments
+        if (arg.value() == null && arg.isOptionalAcceptingNull()) {
+            return null;
+        }
+
+        // Normal parsing logic
+        return getPlayer(arg.requireValue());
+    }
+}
+```
+
+### alwaysParseQuotes()
+
+Determines whether this provider should always parse quoted strings from input.
+
+```java
+default boolean alwaysParseQuotes() {
+    return false;
+}
+```
+
+<ResponseField name="return" type="boolean">
+  `true` if quotes should always be parsed, `false` otherwise (default)
+</ResponseField>
+
+When `true`, the input argument will have quotes parsed even if the command method or parameter is not annotated with `@Quoted`. This is useful for string-based providers that commonly handle multi-word inputs.
+
+#### Example
+
+```java
+public class StringArgument implements ArgumentProvider<String> {
+    @Override
+    public boolean alwaysParseQuotes() {
+        return true; // Always handle "quoted strings" for String parameters
+    }
+
+    @Override
+    public String provide(@NotNull Context ctx, @NotNull InputArgument arg) {
+        return arg.requireValue(); // Will contain unquoted content
+    }
+}
+```
+
+### defaultArgName()
+
+Provides a default argument name for this provider when not explicitly specified.
+
+```java
+default String defaultArgName(@NotNull AnnotatedElement element) {
+    return null;
+}
+```
+
+<ParamField path="element" type="AnnotatedElement" required>
+  The annotated parameter element from the command method
+</ParamField>
+
+<ResponseField name="return" type="String">
+  The default argument name, or `null` to use the parameter name
+</ResponseField>
+
+This name appears in usage messages and error messages when the parameter is not annotated with `@Name`.
+
+#### Example
+
+```java
+public class PlayerArgument implements ArgumentProvider<Player> {
+    @Override
+    public String defaultArgName(@NotNull AnnotatedElement element) {
+        return "player"; // Usage: /command <player> instead of /command <arg0>
+    }
+}
+```
+
+## Suggestion Methods
+
+### suggest()
+
+Provides tab completion suggestions for the argument.
+
+```java
+default void suggest(@NotNull Context ctx,
+                     @NotNull InputArgument arg,
+                     @NotNull SuggestionsBuilder suggestions) 
+        throws BladeParseError {
+}
+```
+
+<ParamField path="ctx" type="Context" required>
+  The command execution context
+</ParamField>
+
+<ParamField path="arg" type="InputArgument" required>
+  The input argument being completed
+</ParamField>
+
+<ParamField path="suggestions" type="SuggestionsBuilder" required>
+  Builder for adding string suggestions
+</ParamField>
+
+**Throws:** `BladeParseError` if an error occurs during suggestion generation
+
+#### Example
+
+```java
+public class PlayerArgument implements ArgumentProvider<Player> {
+    @Override
+    public void suggest(@NotNull Context ctx,
+                       @NotNull InputArgument arg,
+                       @NotNull SuggestionsBuilder suggestions) {
+        Player sender = ctx.sender().parseAs(Player.class);
+        String input = arg.requireValue();
+
+        for (Player player : Bukkit.getOnlinePlayers()) {
+            if (player.getName().toLowerCase().startsWith(input.toLowerCase())
+                && (sender == null || sender.canSee(player))) {
+                suggestions.suggest(player.getName());
+            }
+        }
+    }
+}
+```
+
+### suggestRich()
+
+Provides enhanced tab completion suggestions with tooltips and metadata.
+
+```java
+default void suggestRich(@NotNull Context ctx,
+                        @NotNull InputArgument arg,
+                        @NotNull RichSuggestionsBuilder suggestions) 
+        throws BladeParseError {
+    suggest(ctx, arg, suggestions.legacyView());
+}
+```
+
+<ParamField path="ctx" type="Context" required>
+  The command execution context
+</ParamField>
+
+<ParamField path="arg" type="InputArgument" required>
+  The input argument being completed
+</ParamField>
+
+<ParamField path="suggestions" type="RichSuggestionsBuilder" required>
+  Builder for adding rich suggestions with tooltips and numeric values
+</ParamField>
+
+**Throws:** `BladeParseError` if an error occurs during suggestion generation
+
+The default implementation delegates to `suggest()` for backwards compatibility. Override this method to provide richer suggestions for Brigadier-based platforms.
+
+#### Example
+
+```java
+public class WorldArgument implements ArgumentProvider<World> {
+    @Override
+    public void suggestRich(@NotNull Context ctx,
+                           @NotNull InputArgument arg,
+                           @NotNull RichSuggestionsBuilder suggestions) {
+        for (World world : Bukkit.getWorlds()) {
+            String tooltip = String.format(
+                "Players: %d | Time: %d",
+                world.getPlayerCount(),
+                world.getTime()
+            );
+            suggestions.suggest(world.getName(), SuggestionTooltip.of(tooltip));
+        }
+    }
+}
+```
+
+## Error Handling
+
+Use `BladeParseError` to report parsing errors:
+
+### Fatal Errors
+
+Fatal errors always stop command execution:
+
+```java
+throw BladeParseError.fatal("Invalid input: " + arg.value());
+```
+
+### Recoverable Errors
+
+Recoverable errors allow execution to continue if the parameter is optional:
+
+```java
+if (player == null) {
+    throw BladeParseError.recoverable(
+        "No online player found with name '" + arg.value() + "'"
+    );
+}
+```
+
+For optional parameters, recoverable errors result in `null` values and silent failure. For required parameters, they behave like fatal errors.
+
+## Registration
+
+Register argument providers with the Blade instance:
+
+```java
+Blade.of()
+    .bind(Integer.class, new IntArgument())
+    .bind(Player.class, new PlayerArgument())
+    .build();
+```
+
+## Related
+
+- [InputArgument](/api/input-argument) - The input argument passed to providers
+- [Context](/api/context) - Command execution context
+- [BladeParseError](#error-handling) - Exception for parse errors
+- [SuggestionsBuilder](/api/suggestions) - Builder for basic suggestions
+- [RichSuggestionsBuilder](/api/suggestions#rich-suggestions) - Builder for enhanced suggestions

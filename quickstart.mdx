@@ -1,80 +1,306 @@
 ---
-title: "Quickstart"
-description: "Start building awesome documentation in minutes"
+title: Quick Start
+description: Create your first Blade command in minutes
 ---
 
-## Get started in three steps
+This guide will walk you through creating a simple command using Blade. We'll build a `/greet` command that sends a personalized greeting to a player.
 
-Get your documentation site running locally and make your first customization.
+## Step 1: Create a Command Class
 
-### Step 1: Set up your local environment
+Create a new Java class for your command. Command methods can be static or instance methods.
 
-<AccordionGroup>
-  <Accordion icon="copy" title="Clone your docs locally">
-    During the onboarding process, you created a GitHub repository with your docs content if you didn't already have one. You can find a link to this repository in your [dashboard](https://dashboard.mintlify.com).
+```java
+package com.example.commands;
+
+import me.vaperion.blade.annotation.command.Command;
+import me.vaperion.blade.annotation.command.Description;
+import me.vaperion.blade.annotation.command.Permission;
+import me.vaperion.blade.annotation.parameter.Name;
+import me.vaperion.blade.annotation.parameter.Sender;
+import org.bukkit.entity.Player;
+
+public class GreetCommand {
     
-    To clone the repository locally so that you can make and preview changes to your docs, follow the [Cloning a repository](https://docs.github.com/en/repositories/creating-and-managing-repositories/cloning-a-repository) guide in the GitHub docs.
-  </Accordion>
-  <Accordion icon="rectangle-terminal" title="Start the preview server">
-    1. Install the Mintlify CLI: `npm i -g mint`
-    2. Navigate to your docs directory and run: `mint dev`
-    3. Open `http://localhost:3000` to see your docs live!
-    
-    <Tip>Your preview updates automatically as you edit files.</Tip>
-  </Accordion>
-</AccordionGroup>
+    @Command("greet")
+    @Description("Send a greeting to a player")
+    @Permission("example.greet")
+    public void greet(
+        @Sender Player sender,
+        @Name("player") Player target
+    ) {
+        sender.sendMessage("Hello " + target.getName() + "!");
+        target.sendMessage(sender.getName() + " says hello!");
+    }
+}
+```
 
-### Step 2: Deploy your changes
-
-<AccordionGroup>
-  <Accordion icon="github" title="Install our GitHub app">
-    Install the Mintlify GitHub app from your [dashboard](https://dashboard.mintlify.com/settings/organization/github-app).
-    
-    Our GitHub app automatically deploys your changes to your docs site, so you don't need to manage deployments yourself.
-</Accordion>
-<Accordion icon="palette" title="Update your site name and colors">
-    For a first change, let's update the name and colors of your docs site.
-
-    1. Open `docs.json` in your editor.
-    2. Change the `"name"` field to your project name.
-    3. Update the `"colors"` to match your brand.
-    4. Save and see your changes instantly at `http://localhost:3000`.
-
-    <Tip>Try changing the primary color to see an immediate difference!</Tip>
-  </Accordion>
-</AccordionGroup>
-
-### Step 3: Go live
-
-<Accordion icon="rocket" title="Publish your docs">
-  1. Commit and push your changes.
-  2. Your docs will update and be live in moments!
-</Accordion>
-
-## Next steps
-
-Now that you have your docs running, explore these key features:
-
-<CardGroup cols={2}>
-
-<Card title="Write Content" icon="pen-to-square" href="/essentials/markdown">
-  Learn MDX syntax and start writing your documentation.
-</Card>
-
-<Card title="Customize style" icon="palette" href="/essentials/settings">
-  Make your docs match your brand perfectly.
-</Card>
-
-<Card title="Add code examples" icon="square-code" href="/essentials/code">
-  Include syntax-highlighted code blocks.
-</Card>
-
-<Card title="API documentation" icon="code" href="/api-reference/introduction">
-  Auto-generate API docs from OpenAPI specs.
-</Card>
-
-</CardGroup>
+<Steps>
+  <Step title="Annotate the method">
+    Use `@Command` to define the command name. The annotation value becomes the command that players type in chat.
+  </Step>
+  
+  <Step title="Add a description">
+    Use `@Description` to provide a description for your command. This appears in help messages.
+  </Step>
+  
+  <Step title="Set permissions">
+    Use `@Permission` to restrict who can use the command. Players need this permission to execute the command.
+  </Step>
+  
+  <Step title="Define parameters">
+    - `@Sender` marks the command executor (required first parameter)
+    - `@Name` specifies the argument name shown in usage messages
+  </Step>
+</Steps>
 
 <Note>
-  **Need help?** See our [full documentation](https://mintlify.com/docs) or join our [community](https://mintlify.com/community).
+  The `@Sender` parameter is required and must be the first parameter. It represents the entity executing the command (Player, ConsoleCommandSender, etc.).
 </Note>
+
+## Step 2: Initialize Blade
+
+In your plugin's main class, initialize Blade and register your command.
+
+```java
+package com.example;
+
+import me.vaperion.blade.Blade;
+import me.vaperion.blade.bukkit.BladeBukkitPlatform;
+import org.bukkit.plugin.java.JavaPlugin;
+
+public class MyPlugin extends JavaPlugin {
+    
+    private Blade blade;
+    
+    @Override
+    public void onEnable() {
+        // Initialize Blade for the Bukkit platform
+        this.blade = Blade.forPlatform(new BladeBukkitPlatform(this))
+            .config(cfg -> {
+                cfg.commandQualifier("myplugin"); // Optional: namespace for commands
+                cfg.defaultPermissionMessage("You don't have permission!"); // Optional
+            })
+            .build()
+            .register(new GreetCommand()); // Register your command instance
+        
+        getLogger().info("Plugin enabled with Blade!");
+    }
+}
+```
+
+<Steps>
+  <Step title="Create Blade instance">
+    Use `Blade.forPlatform()` with the appropriate platform class (e.g., `BladeBukkitPlatform` for Bukkit).
+  </Step>
+  
+  <Step title="Configure Blade (optional)">
+    Use `.config()` to customize settings like command qualifier and permission messages.
+  </Step>
+  
+  <Step title="Build and register">
+    Call `.build()` to create the Blade instance, then `.register()` to add your command.
+  </Step>
+</Steps>
+
+<Tip>
+  You can register multiple commands at once by chaining `.register()` calls:
+  
+  ```java
+  blade.register(new GreetCommand())
+       .register(new PayCommand())
+       .register(new TeleportCommand());
+  ```
+</Tip>
+
+## Step 3: Test Your Command
+
+Build your plugin and copy it to your server's plugins folder. Start the server and test your command:
+
+```
+/greet Notch
+```
+
+You should see the greeting message appear for both you and the target player!
+
+## Adding More Features
+
+Let's enhance our command with optional parameters and flags:
+
+```java
+import me.vaperion.blade.annotation.parameter.Flag;
+import me.vaperion.blade.annotation.parameter.Greedy;
+import me.vaperion.blade.annotation.parameter.Optional;
+
+public class GreetCommand {
+    
+    @Command("greet")
+    @Description("Send a greeting to a player")
+    @Permission("example.greet")
+    public void greet(
+        @Sender Player sender,
+        @Name("player") Player target,
+        @Name("message") @Optional @Greedy String customMessage,
+        @Flag(value = 's', description = "Silent mode") boolean silent
+    ) {
+        String message = customMessage != null 
+            ? customMessage 
+            : "Hello " + target.getName() + "!";
+        
+        if (!silent) {
+            sender.sendMessage("You greeted " + target.getName());
+        }
+        
+        target.sendMessage(sender.getName() + " says: " + message);
+    }
+}
+```
+
+Now you can use the command in multiple ways:
+
+<CodeGroup>
+```bash Basic
+/greet Notch
+```
+
+```bash Custom Message
+/greet Notch Welcome to the server!
+```
+
+```bash Silent Mode
+/greet Notch -s
+```
+
+```bash Combined
+/greet Notch Hope you have fun! -s
+```
+</CodeGroup>
+
+<Note>
+  - `@Optional` makes a parameter optional (it will be `null` if not provided)
+  - `@Greedy` combines all remaining arguments into a single string
+  - `@Flag` creates a command flag (like `-s` for silent mode)
+</Note>
+
+## Registering Multiple Commands
+
+You can register all commands in a package at once:
+
+```java
+@Override
+public void onEnable() {
+    this.blade = Blade.forPlatform(new BladeBukkitPlatform(this))
+        .build()
+        // Register all commands in the package
+        .registerPackage(MyPlugin.class, "com.example.commands");
+}
+```
+
+This will automatically discover and register all command classes in the `com.example.commands` package and its sub-packages.
+
+## Common Patterns
+
+### Static Methods
+
+Commands can also be static methods:
+
+```java
+public class GreetCommand {
+    @Command("greet")
+    public static void greet(@Sender Player sender, @Name("player") Player target) {
+        // Command logic
+    }
+}
+```
+
+Register static command classes without instantiation:
+
+```java
+blade.register(GreetCommand.class);
+```
+
+### Multiple Commands in One Class
+
+You can define multiple command methods in a single class:
+
+```java
+public class SocialCommands {
+    
+    @Command("greet")
+    public void greet(@Sender Player sender, @Name("player") Player target) {
+        // Greeting logic
+    }
+    
+    @Command("wave")
+    public void wave(@Sender Player sender, @Name("player") Player target) {
+        // Waving logic
+    }
+    
+    @Command("hug")
+    public void hug(@Sender Player sender, @Name("player") Player target) {
+        // Hugging logic
+    }
+}
+```
+
+### Subcommands
+
+Create subcommands by using spaces in the command annotation:
+
+```java
+public class AdminCommands {
+    
+    @Command("admin reload")
+    @Permission("example.admin.reload")
+    public void reload(@Sender Player sender) {
+        // Reload logic
+    }
+    
+    @Command("admin debug")
+    @Permission("example.admin.debug")
+    public void debug(@Sender Player sender) {
+        // Debug logic
+    }
+}
+```
+
+Players would use these commands like:
+- `/admin reload`
+- `/admin debug`
+
+## Error Handling
+
+Blade automatically handles common errors:
+
+- **Invalid arguments**: Shows usage message
+- **Missing permissions**: Shows permission denied message  
+- **Player not found**: Shows "Player not found" error
+- **Invalid number**: Shows "Invalid number" error
+
+You can customize error messages in your configuration:
+
+```java
+Blade.forPlatform(new BladeBukkitPlatform(this))
+    .config(cfg -> {
+        cfg.defaultPermissionMessage("§cYou don't have permission to use this command!");
+    })
+    .build();
+```
+
+## Next Steps
+
+You've created your first Blade command! Here's what to explore next:
+
+<CardGroup cols={2}>
+  <Card title="Core Concepts" icon="book" href="/core-concepts/commands">
+    Learn about arguments, flags, and providers
+  </Card>
+  <Card title="Annotations Reference" icon="code" href="/api/annotations/command">
+    Explore all available annotations
+  </Card>
+  <Card title="Custom Providers" icon="puzzle-piece" href="/advanced/custom-argument-providers">
+    Create custom argument types
+  </Card>
+  <Card title="Advanced Features" icon="wand-magic-sparkles" href="/advanced/async-commands">
+    Async commands, custom senders, and more
+  </Card>
+</CardGroup>

@@ -1,0 +1,278 @@
+---
+title: "BladeConfiguration"
+description: "Configuration options for customizing Blade's behavior"
+---
+
+## Overview
+
+The `BladeConfiguration` class contains all configuration options for customizing how Blade behaves. You configure these settings using the `config()` method on the Blade builder.
+
+## Configuration Properties
+
+### verbose
+
+Whether Blade should log verbose output including detailed information like command registration.
+
+**Type:** `boolean`  
+**Default:** `false`
+
+```java
+config.setVerbose(true);
+```
+
+### overrideCommands
+
+Whether Blade should override vanilla/existing commands when registering commands with the same name.
+
+For example, if you register a command named `whitelist`, the vanilla `/whitelist` command will be overridden if this option is enabled.
+
+**Type:** `boolean`  
+**Default:** `false`
+
+```java
+config.setOverrideCommands(true);
+```
+
+### commandQualifier
+
+The qualifier used to register commands. Most platforms (Bukkit, Velocity, etc.) prefix commands with the plugin name.
+
+For example, with a qualifier of `myplugin`, commands can be accessed as `/myplugin:command` in addition to `/command`.
+
+**Type:** `String`  
+**Default:** Your plugin's name
+
+```java
+config.setCommandQualifier("myprefix");
+```
+
+### defaultPermissionMessage
+
+The default permission message sent to users when they don't have permission to execute a command.
+
+This can be overridden on a per-command basis using the `@Permission` annotation.
+
+**Type:** `String`  
+**Default:** `"You don't have permission to perform this command."`
+
+```java
+config.setDefaultPermissionMessage("You lack permission!");
+```
+
+### executionTimeWarningThreshold
+
+The execution time threshold (in milliseconds) after which a warning is logged when a command takes too long to execute on the main thread.
+
+This helps identify performance issues with synchronous commands.
+
+**Type:** `long`  
+**Default:** `25L` (25 milliseconds)
+
+```java
+config.setExecutionTimeWarningThreshold(50L);
+```
+
+### strictArgumentCount
+
+Whether Blade should strictly enforce the argument count when executing commands.
+
+When enabled (default), if a user provides more arguments than a command expects, Blade will reject the command execution and inform the user about the incorrect argument count.
+
+**Type:** `boolean`  
+**Default:** `true`
+
+```java
+config.setStrictArgumentCount(false);
+```
+
+### lenientFlagMatching
+
+Whether Blade should strictly match flags when parsing command arguments.
+
+- **Disabled (default):** Any unknown flags encountered will be parsed as standard arguments. This also applies to BSD-style flags, e.g., `-ab` will be parsed as an argument if either `-a` or `-b` are unknown.
+- **Enabled:** Unknown flags will simply be ignored during parsing.
+
+**Type:** `boolean`  
+**Default:** `false`
+
+```java
+config.setLenientFlagMatching(true);
+```
+
+### strictFlagCount
+
+Whether Blade should strictly enforce that each flag is only provided once.
+
+When enabled (default), if a user provides the same flag multiple times, Blade will reject the command execution and inform the user about the duplicate flags.
+
+**Type:** `boolean`  
+**Default:** `true`
+
+```java
+config.setStrictFlagCount(false);
+```
+
+### asyncExecutor
+
+The executor used for running asynchronous commands (commands annotated with `@Async`).
+
+By default, Blade uses a cached thread pool with daemon threads.
+
+**Type:** `Consumer<Runnable>`  
+**Default:** Cached thread pool executor
+
+```java
+config.setAsyncExecutor(runnable -> {
+    myCustomExecutor.execute(runnable);
+});
+```
+
+### tabCompleter
+
+The tab completer used for providing command completions.
+
+By default, a platform-specific implementation is used.
+
+**Type:** `TabCompleter`  
+**Default:** `TabCompleter.Default`
+
+```java
+config.setTabCompleter(new CustomTabCompleter());
+```
+
+### helpGenerator
+
+The help generator used for generating help messages for commands.
+
+**Type:** `HelpGenerator<Text>`  
+**Default:** `HelpGenerator.Default`
+
+```java
+config.setHelpGenerator(new CustomHelpGenerator());
+```
+
+### feedbackCreator
+
+The creator used for generating command feedback messages (usage and help).
+
+**Type:** `CommandFeedbackCreator<Text>`  
+**Default:** `CommandFeedbackCreator.Default`
+
+```java
+config.setFeedbackCreator(new CustomFeedbackCreator());
+```
+
+### logger
+
+The logger Blade uses to log messages, warnings, and errors.
+
+**Type:** `BladeLogger`  
+**Default:** `BladeLogger.DEFAULT`
+
+```java
+config.setLogger(new CustomBladeLogger());
+```
+
+### helpSorter
+
+The comparator used to sort commands in help messages.
+
+By default, commands are sorted alphabetically by their main label.
+
+**Type:** `Comparator<BladeCommand>`  
+**Default:** Alphabetical by main label
+
+```java
+config.setHelpSorter((cmd1, cmd2) -> {
+    // Custom sorting logic
+    return cmd1.mainLabel().compareTo(cmd2.mainLabel());
+});
+```
+
+## Configuration Example
+
+Here's a comprehensive example showing common configuration options:
+
+```java
+import me.vaperion.blade.Blade;
+import me.vaperion.blade.platform.bukkit.BukkitBladePlatform;
+
+public class MyPlugin extends JavaPlugin {
+    @Override
+    public void onEnable() {
+        Blade blade = Blade.forPlatform(new BukkitBladePlatform(this))
+            .config(config -> {
+                // Logging
+                config.setVerbose(true);
+                
+                // Command registration
+                config.setOverrideCommands(true);
+                config.setCommandQualifier("myplugin");
+                
+                // Permissions
+                config.setDefaultPermissionMessage(
+                    ChatColor.RED + "You don't have permission!"
+                );
+                
+                // Performance
+                config.setExecutionTimeWarningThreshold(50L);
+                
+                // Argument parsing
+                config.setStrictArgumentCount(true);
+                config.setLenientFlagMatching(false);
+                config.setStrictFlagCount(true);
+                
+                // Async execution
+                config.setAsyncExecutor(runnable -> {
+                    Bukkit.getScheduler().runTaskAsynchronously(
+                        this, runnable
+                    );
+                });
+                
+                // Help sorting
+                config.setHelpSorter((cmd1, cmd2) -> {
+                    // Sort by permission first, then alphabetically
+                    if (cmd1.permission() != null && cmd2.permission() == null) {
+                        return 1;
+                    }
+                    if (cmd1.permission() == null && cmd2.permission() != null) {
+                        return -1;
+                    }
+                    return cmd1.mainLabel().compareTo(cmd2.mainLabel());
+                });
+            })
+            .build();
+    }
+}
+```
+
+## Platform-Specific Configuration
+
+Some platforms may provide additional configuration options. Check your platform's documentation for platform-specific settings.
+
+```java
+// Bukkit example
+Blade.forPlatform(new BukkitBladePlatform(this))
+    .config(config -> {
+        // Standard configuration
+        config.setVerbose(true);
+        
+        // Platform-specific configuration is handled by the platform
+    })
+    .build();
+```
+
+## Validation
+
+Blade automatically validates configuration when building. The following must be set:
+- `commandQualifier` (cannot be null)
+- `helpGenerator` (cannot be null)
+- `tabCompleter` (cannot be null)
+
+If validation fails, Blade will throw an exception during the build process.
+
+## See Also
+
+- [Blade](/api/blade) - Main Blade class
+- [Builder](/api/blade-builder) - Builder pattern and configuration flow
+- [Getting Started](/quickstart) - Quick start guide

@@ -1,0 +1,191 @@
+---
+title: Commands
+description: Learn how to create and structure commands with the @Command annotation
+---
+
+## Overview
+
+The `@Command` annotation is the foundation of Blade's command system. It can be applied to both methods and classes to create flexible command hierarchies.
+
+## Method-Level Commands
+
+The simplest way to create a command is to annotate a method with `@Command`:
+
+```java
+@Command("greet")
+public void greetCommand(@Sender Player player) {
+    player.sendMessage("Hello!");
+}
+```
+
+This creates a standalone command `/greet` that can be executed by players.
+
+### Multiple Aliases
+
+You can provide multiple aliases for a command:
+
+```java
+@Command({"teleport", "tp"})
+public void teleportCommand(@Sender Player player, Player target) {
+    player.teleport(target.getLocation());
+}
+```
+
+Both `/teleport` and `/tp` will execute the same command. The first label is used as the primary name in help and usage messages.
+
+## Class-Level Commands
+
+When applied to a class, `@Command` acts as a prefix for all command methods within that class:
+
+```java
+@Command("admin")
+public class AdminCommands {
+    
+    @Command("ban")
+    public void banCommand(@Sender Player sender, Player target) {
+        // Creates: /admin ban <target>
+    }
+    
+    @Command("kick")
+    public void kickCommand(@Sender Player sender, Player target) {
+        // Creates: /admin kick <target>
+    }
+}
+```
+
+This pattern creates subcommands:
+- `/admin ban <target>`
+- `/admin kick <target>`
+
+<Note>
+The class-level `@Command` is automatically prepended to each method's command labels, creating a command hierarchy.
+</Note>
+
+## Command Hierarchies
+
+Blade supports multi-level command hierarchies through label spacing:
+
+```java
+public class GameCommands {
+    
+    @Command("game start")
+    public void startGame(@Sender Player player) {
+        // Creates: /game start
+    }
+    
+    @Command("game stop")
+    public void stopGame(@Sender Player player) {
+        // Creates: /game stop
+    }
+    
+    @Command("game settings difficulty")
+    public void setDifficulty(@Sender Player player, String difficulty) {
+        // Creates: /game settings difficulty <difficulty>
+    }
+}
+```
+
+### Command Tree Structure
+
+Blade automatically creates a command tree based on your label structure. Running `/game` without arguments will show available subcommands:
+- `/game start`
+- `/game stop`
+- `/game settings` (shows as intermediate node)
+  - `/game settings difficulty`
+
+<Tip>
+Intermediate nodes (like `/game settings`) that don't have their own method implementation are automatically created as "stub" commands that display their available subcommands.
+</Tip>
+
+## Combining Class and Method Labels
+
+You can combine class-level and method-level spacing for deep hierarchies:
+
+```java
+@Command("server config")
+public class ServerConfigCommands {
+    
+    @Command("set maxplayers")
+    public void setMaxPlayers(@Sender CommandSender sender, int count) {
+        // Creates: /server config set maxplayers <count>
+    }
+    
+    @Command("get maxplayers")
+    public void getMaxPlayers(@Sender CommandSender sender) {
+        // Creates: /server config get maxplayers
+    }
+}
+```
+
+## Command Registration
+
+Register your command classes with the Blade instance:
+
+```java
+Blade blade = Blade.forPlatform(platform)
+    .build();
+
+// Register a class with static methods
+blade.register(AdminCommands.class);
+
+// Register an instance (for non-static methods)
+blade.register(new GameCommands());
+
+// Register instance with explicit class
+blade.register(instance, MyCommands.class);
+```
+
+### Package Registration
+
+Register all command classes in a package:
+
+```java
+blade.registerPackage(MyPlugin.class, "com.example.plugin.commands");
+```
+
+## Command Method Signatures
+
+Blade supports flexible method signatures:
+
+### Using Context
+
+```java
+@Command("info")
+public void infoCommand(Context ctx) {
+    ctx.sender().sendMessage("Executed with: " + ctx.label());
+}
+```
+
+### Using Sender
+
+```java
+@Command("heal")
+public void healCommand(@Sender Player player) {
+    player.setHealth(20.0);
+}
+```
+
+### With Parameters
+
+```java
+@Command("give")
+public void giveCommand(@Sender Player player, String item, int amount) {
+    // Give player items
+}
+```
+
+<Note>
+The first parameter can be annotated with `@Sender` to receive the command executor. All other parameters are parsed as command arguments.
+</Note>
+
+## Source Reference
+
+The `@Command` annotation is defined in:
+```
+me/vaperion/blade/annotation/command/Command.java:32-44
+```
+
+Key method for label generation:
+```
+me/vaperion/blade/command/BladeCommand.java:72-75
+```

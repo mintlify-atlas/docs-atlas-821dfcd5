@@ -1,0 +1,372 @@
+---
+title: Parameter Annotations
+description: Annotations for configuring command parameters in Blade
+---
+
+Parameter annotations control how command arguments are parsed, validated, and mapped to method parameters.
+
+## @Sender
+
+Marks a parameter as the command sender.
+
+```java
+@Command("heal")
+public void healCommand(@Sender Player player) {
+    player.setHealth(20.0);
+}
+```
+
+<Info>
+  Sender parameters don't consume command arguments. They're automatically populated with the command executor.
+</Info>
+
+### Custom Sender Types
+
+You can register custom sender types using `SenderProvider`:
+
+```java
+blade.binder().bindSender(CustomPlayer.class, (sender, context) -> {
+    return customPlayerManager.wrap(sender);
+});
+
+@Command("custom")
+public void customCommand(@Sender CustomPlayer player) {
+    // Receives your custom type
+}
+```
+
+---
+
+## @Name
+
+Sets the display name for a parameter.
+
+<ParamField path="value" type="String" required>
+  The parameter name shown in usage messages and errors.
+</ParamField>
+
+```java
+@Command("teleport")
+public void teleportCommand(
+    @Sender Player player,
+    @Name("target") Player target,
+    @Name("destination") Location location
+) {
+    // Usage: /teleport <target> <destination>
+}
+```
+
+<Note>
+  Without `@Name`, Blade uses the compiled bytecode parameter name (like `arg0`, `arg1`) unless you compile with the `-parameters` flag.
+</Note>
+
+---
+
+## @Opt
+
+Marks a parameter as optional with configurable default values.
+
+<ParamField path="value" type="Type" default="EMPTY_OR_CUSTOM">
+  The type of default value:
+  - `EMPTY_OR_CUSTOM` - Use `EMPTY` or `CUSTOM` based on whether custom value is provided
+  - `EMPTY` - Use `null` (or primitive default like `0`, `false`)
+  - `SENDER` - Use the command sender as default (for player types)
+  - `CUSTOM` - Use the value from `custom()` field
+</ParamField>
+
+<ParamField path="custom" type="String" default="">
+  Custom default value when `value = Type.CUSTOM`. Parsed according to parameter type.
+</ParamField>
+
+<ParamField path="treatErrorAsEmpty" type="boolean" default="false">
+  If true, parsing errors result in an empty value instead of failing command execution.
+</ParamField>
+
+<CodeGroup>
+```java Empty Default
+@Command("teleport")
+public void teleportCommand(
+    @Sender Player player,
+    @Name("target") Player target,
+    @Name("world") @Opt World world
+) {
+    if (world == null) {
+        world = player.getWorld();
+    }
+    // Usage: /teleport <target> [world]
+}
+```
+
+```java Sender Default
+@Command("heal")
+public void healCommand(
+    @Sender Player player,
+    @Name("target") @Opt(Type.SENDER) Player target
+) {
+    // If no target specified, heals the sender
+    target.setHealth(20.0);
+}
+```
+
+```java Custom Default
+@Command("speed")
+public void speedCommand(
+    @Sender Player player,
+    @Name("amount") @Opt(value = Type.CUSTOM, custom = "1.0") float speed
+) {
+    player.setWalkSpeed(speed);
+    // Usage: /speed [amount] (defaults to 1.0)
+}
+```
+
+```java Error Tolerance
+@Command("give")
+public void giveCommand(
+    @Sender Player player,
+    @Name("amount") @Opt(treatErrorAsEmpty = true) Integer amount
+) {
+    if (amount == null) {
+        amount = 1; // Invalid input defaults to 1
+    }
+    // /give abc -> amount = 1 (parsing error treated as empty)
+}
+```
+</CodeGroup>
+
+---
+
+## @Flag
+
+Creates a command flag that can be specified with `-f` or `--flagName`.
+
+<ParamField path="value" type="char" required>
+  Single character for short flag format (`-f`).
+</ParamField>
+
+<ParamField path="longName" type="String" default="">
+  Long flag name for `--flagName` format.
+</ParamField>
+
+<ParamField path="description" type="String" default="">
+  Description shown in help messages.
+</ParamField>
+
+<ParamField path="required" type="boolean" default="false">
+  Whether the flag must be present.
+</ParamField>
+
+<CodeGroup>
+```java Boolean Flag
+@Command("teleport")
+public void teleportCommand(
+    @Sender Player player,
+    @Name("location") Location location,
+    @Flag(value = 'f', longName = "force", description = "Force teleport even if unsafe") boolean force
+) {
+    if (force || isSafe(location)) {
+        player.teleport(location);
+    }
+}
+// Usage: /teleport <location> [-f/--force]
+```
+
+```java Required Flag
+@Command("delete")
+public void deleteCommand(
+    @Sender Player player,
+    @Name("item") String item,
+    @Flag(value = 'c', longName = "confirm", required = true) boolean confirm
+) {
+    deleteItem(item);
+}
+// Usage: /delete <item> -c (flag is mandatory)
+```
+
+```java Value Flag
+@Command("search")
+public void searchCommand(
+    @Sender Player player,
+    @Name("query") String query,
+    @Flag(value = 'l', longName = "limit") @Opt(value = Type.CUSTOM, custom = "10") int limit
+) {
+    List<Result> results = search(query, limit);
+}
+// Usage: /search <query> [-l <number>]
+```
+</CodeGroup>
+
+---
+
+## @Greedy
+
+Consumes all remaining arguments into a single string.
+
+```java
+@Command("announce")
+public void announceCommand(
+    @Sender Player player,
+    @Name("message") @Greedy String message
+) {
+    Bukkit.broadcastMessage(message);
+}
+// /announce Hello everyone! -> message = "Hello everyone!"
+// No quotes needed
+```
+
+<Warning>
+  Greedy parameters must be the last parameter in the method (excluding flags). Only works with `String` parameters.
+</Warning>
+
+---
+
+## @Range
+
+Validates that numeric parameters fall within a specified range.
+
+<ParamField path="min" type="double" default="Double.NaN">
+  Minimum allowed value (inclusive). `NaN` means no minimum.
+</ParamField>
+
+<ParamField path="max" type="double" default="Double.NaN">
+  Maximum allowed value (inclusive). `NaN` means no maximum.
+</ParamField>
+
+<CodeGroup>
+```java Min and Max
+@Command("setlevel")
+public void setLevelCommand(
+    @Sender Player player,
+    @Name("level") @Range(min = 1, max = 100) int level
+) {
+    player.setLevel(level);
+}
+// Valid: /setlevel 50
+// Invalid: /setlevel 0, /setlevel 101
+```
+
+```java Min Only
+@Command("give")
+public void giveCommand(
+    @Sender Player player,
+    @Name("amount") @Range(min = 1) int amount
+) {
+    // Must be at least 1
+}
+```
+
+```java Max Only
+@Command("damage")
+public void damageCommand(
+    @Sender Player player,
+    @Name("amount") @Range(max = 20.0) double damage
+) {
+    // Cannot exceed 20.0
+}
+```
+</CodeGroup>
+
+<Note>
+  Works with all numeric types: `int`, `long`, `float`, `double`, and their wrapper classes.
+</Note>
+
+---
+
+## @Provider
+
+Overrides the argument provider for a specific parameter.
+
+<ParamField path="value" type="Class<? extends ArgumentProvider<?>>" required>
+  The custom argument provider class to use.
+</ParamField>
+
+<ParamField path="scope" type="Scope" default="BOTH">
+  What to override:
+  - `PARSER` - Override only argument parsing
+  - `SUGGESTIONS` - Override only tab completion
+  - `BOTH` - Override both parsing and suggestions
+</ParamField>
+
+```java
+public class OnlinePlayerProvider implements ArgumentProvider<Player> {
+    @Override
+    public Player provide(Context context, Argument argument) throws BladeExitMessage {
+        String name = argument.getString();
+        Player player = Bukkit.getPlayerExact(name);
+        if (player == null) {
+            throw new BladeExitMessage("Player '" + name + "' is not online");
+        }
+        return player;
+    }
+    
+    @Override
+    public List<String> suggest(Context context, Argument argument) {
+        return Bukkit.getOnlinePlayers().stream()
+            .map(Player::getName)
+            .collect(Collectors.toList());
+    }
+}
+
+@Command("message")
+public void messageCommand(
+    @Sender Player player,
+    @Name("target") @Provider(OnlinePlayerProvider.class) Player target,
+    @Name("message") @Greedy String message
+) {
+    target.sendMessage(player.getName() + " -> " + message);
+}
+```
+
+<CodeGroup>
+```java Parser Only
+@Command("lookup")
+public void lookupCommand(
+    @Name("player") @Provider(value = OfflinePlayerProvider.class, scope = Scope.PARSER) Player player
+) {
+    // Custom parsing, default tab completion
+}
+```
+
+```java Suggestions Only
+@Command("warp")
+public void warpCommand(
+    @Name("location") @Provider(value = WarpSuggestionsProvider.class, scope = Scope.SUGGESTIONS) String warp
+) {
+    // Default parsing, custom suggestions
+}
+```
+</CodeGroup>
+
+---
+
+## @Data
+
+Passes custom string data to an argument provider's methods.
+
+<ParamField path="value" type="String[]" required>
+  Array of strings passed to the argument provider.
+</ParamField>
+
+```java
+public class ItemProvider implements ArgumentProvider<ItemStack> {
+    @Override
+    public ItemStack provide(Context context, Argument argument) throws BladeExitMessage {
+        String[] data = argument.getParameterData();
+        String category = data.length > 0 ? data[0] : "all";
+        
+        // Use category to filter items
+        return parseItem(argument.getString(), category);
+    }
+}
+
+@Command("give")
+public void giveCommand(
+    @Sender Player player,
+    @Name("weapon") @Data("weapons") @Provider(ItemProvider.class) ItemStack item
+) {
+    player.getInventory().addItem(item);
+}
+```
+
+<Info>
+  For type-safe metadata, consider creating a custom annotation marked with `@Forwarded` instead of using string-based `@Data`.
+</Info>

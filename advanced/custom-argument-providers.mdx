@@ -1,0 +1,204 @@
+---
+title: Custom Argument Providers
+description: Create custom ArgumentProvider implementations to parse command arguments
+---
+
+Argument providers are responsible for converting command input into specific types. Blade provides built-in providers for common types, but you can create custom providers for your own types.
+
+## ArgumentProvider Interface
+
+The `ArgumentProvider<T>` interface is the core abstraction for argument parsing:
+
+```java
+public interface ArgumentProvider<T> {
+    /**
+     * Converts the given InputArgument into the specific type.
+     */
+    @Nullable
+    T provide(@NotNull Context ctx, @NotNull InputArgument arg) throws BladeParseError;
+
+    /**
+     * Suggests possible completions for the given InputArgument.
+     */
+    default void suggest(@NotNull Context ctx,
+                         @NotNull InputArgument arg,
+                         @NotNull SuggestionsBuilder suggestions) throws BladeParseError {
+    }
+
+    /**
+     * Suggests possible completions with rich metadata (tooltips, etc.).
+     */
+    default void suggestRich(@NotNull Context ctx,
+                             @NotNull InputArgument arg,
+                             @NotNull RichSuggestionsBuilder suggestions) throws BladeParseError {
+        suggest(ctx, arg, suggestions.legacyView());
+    }
+}
+```
+
+<Warning>
+Argument provider instances must be **stateless**, as a single instance will be used for all commands. If you do have to store some state, make sure to account for that.
+</Warning>
+
+## Creating a Custom Provider
+
+Here's a complete example from the Blade README showing how to create a custom argument provider:
+
+```java
+public class Data {
+    public String message;
+    public boolean wasProvided;
+}
+
+public class DataArgumentProvider implements ArgumentProvider<Data> {
+    @Override
+    public @Nullable Data provide(@NotNull Context ctx, @NotNull InputArgument arg) {
+        Data data = new Data();
+
+        if (arg.status() == InputArgument.Status.NOT_PRESENT) {
+            data.wasProvided = false;
+            data.message = "Default value: " + arg.value();
+        } else {
+            data.wasProvided = true;
+            data.message = arg.value();
+        }
+
+        return data;
+    }
+
+    @Override
+    public void suggest(@NotNull Context ctx, @NotNull InputArgument arg, @NotNull SuggestionsBuilder suggestions) {
+        suggestions.suggest("example");
+    }
+}
+```
+
+## Error Handling
+
+When parsing fails, you can throw different types of errors:
+
+```java
+// Show the command usage message
+throw new BladeUsageMessage();
+
+// Fail the command with a custom error message (non-recoverable)
+throw BladeParseError.fatal("Custom error message");
+
+// Allow recovery if the argument is optional
+throw BladeParseError.recoverable("Custom error message");
+```
+
+## InputArgument Status
+
+The `InputArgument` class provides information about the argument:
+
+```java
+public enum Status {
+    /**
+     * The argument was provided.
+     */
+    PRESENT,
+    /**
+     * The argument was not provided.
+     */
+    NOT_PRESENT
+}
+```
+
+Check the status to handle optional arguments:
+
+```java
+if (arg.status() == InputArgument.Status.NOT_PRESENT) {
+    // Handle missing argument
+    return defaultValue;
+}
+```
+
+## Advanced Provider Features
+
+### Handling Null Input Arguments
+
+By default, providers are not called when the argument is null. Override this behavior:
+
+```java
+@Override
+public boolean handlesNullInputArguments() {
+    return true; // Provider will be called even with null arguments
+}
+```
+
+This is useful for implementing logic for optional arguments, like handling `@Opt.Type.SENDER`.
+
+### Custom Default Argument Names
+
+Provide a default name for arguments using this provider:
+
+```java
+@Override
+public @Nullable String defaultArgName(@NotNull AnnotatedElement element) {
+    return "player"; // Default name if @Name is not specified
+}
+```
+
+### Always Parse Quotes
+
+Force quote parsing even without the `@Quoted` annotation:
+
+```java
+@Override
+public boolean alwaysParseQuotes() {
+    return true;
+}
+```
+
+## Registering Custom Providers
+
+Register your custom provider in the Blade builder:
+
+```java
+Blade.forPlatform(new BladeBukkitPlatform(this))
+    .bind(binder -> {
+        binder.bind(Data.class, new DataArgumentProvider());
+    })
+    .build();
+```
+
+## Releasing Default Providers
+
+You can remove built-in providers and replace them with your own:
+
+```java
+.bind(binder -> {
+    binder.release(Player.class); // Remove the default provider
+    binder.bind(Player.class, new MyPlayerProvider()); // Add your own
+})
+```
+
+## Per-Parameter Providers
+
+You can also specify a custom provider for individual parameters:
+
+```java
+@Command("example")
+public void example(
+    @Provider(MyPlayerProvider.class) Player customPlayer,
+    // Specify the scope (BOTH, PARSER, SUGGESTIONS)
+    @Provider(value = MyPlayerProvider.class, scope = Provider.Scope.SUGGESTIONS) Player customPlayer2
+) {
+    // Command logic
+}
+```
+
+## Rich Suggestions
+
+For Brigadier-based platforms, you can provide richer suggestions with tooltips:
+
+```java
+@Override
+public void suggestRich(@NotNull Context ctx,
+                        @NotNull InputArgument arg,
+                        @NotNull RichSuggestionsBuilder suggestions) throws BladeParseError {
+    suggestions.suggest("value1", "Tooltip for value1");
+    suggestions.suggest("value2", "Tooltip for value2");
+}
+```

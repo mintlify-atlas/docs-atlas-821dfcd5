@@ -1,0 +1,212 @@
+---
+title: 'Basic Commands'
+description: 'Learn how to create simple commands with Blade'
+---
+
+This guide will walk you through creating basic commands, from the simplest possible command to commands with arguments and descriptions.
+
+## Your First Command
+
+The simplest command requires just the `@Command` annotation and a sender parameter:
+
+```java
+public class HelloCommand {
+    @Command("hello")
+    public static void hello(@Sender CommandSender sender) {
+        sender.sendMessage("Hello, world!");
+    }
+}
+```
+
+**What each part does:**
+- `@Command("hello")` - Defines the command name that players will type (e.g., `/hello`)
+- `@Sender CommandSender sender` - Receives the command sender (player or console)
+- `sender.sendMessage(...)` - Sends a message back to whoever executed the command
+
+## Adding a Description
+
+Make your command more user-friendly by adding a description that appears in help messages:
+
+```java
+public class HelloCommand {
+    @Command("hello")
+    @Description("Greets the command sender")
+    public static void hello(@Sender CommandSender sender) {
+        sender.sendMessage("Hello, world!");
+    }
+}
+```
+
+The `@Description` annotation adds helpful information that appears when players view command help.
+
+## Player-Only Commands
+
+Many commands should only be executable by players, not the console:
+
+```java
+public class FlyCommand {
+    @Command("fly")
+    @Description("Toggle flight mode")
+    public static void fly(@Sender Player player) {
+        // Using Player instead of CommandSender makes this player-only
+        boolean flying = !player.isFlying();
+        player.setAllowFlight(flying);
+        player.setFlying(flying);
+        
+        player.sendMessage(flying ? "Flight enabled!" : "Flight disabled!");
+    }
+}
+```
+
+**Key point:** By using `Player` instead of `CommandSender`, Blade automatically ensures only players can execute this command.
+
+## Commands with Arguments
+
+Add parameters to accept arguments from the command sender:
+
+```java
+public class TeleportCommand {
+    @Command("teleport")
+    @Description("Teleport to a player")
+    public static void teleport(
+        @Sender Player sender,
+        @Name("target") Player target
+    ) {
+        sender.teleport(target.getLocation());
+        sender.sendMessage("Teleported to " + target.getName());
+    }
+}
+```
+
+**How arguments work:**
+- `@Name("target")` - Defines the argument name shown in usage messages
+- `Player target` - Blade automatically parses player names and validates they're online
+- Usage: `/teleport <target>`
+
+## Multiple Arguments
+
+Commands can have multiple arguments of different types:
+
+```java
+public class GiveCommand {
+    @Command("give")
+    @Description("Give items to a player")
+    public static void give(
+        @Sender CommandSender sender,
+        @Name("player") Player target,
+        @Name("item") Material material,
+        @Name("amount") int amount
+    ) {
+        ItemStack item = new ItemStack(material, amount);
+        target.getInventory().addItem(item);
+        
+        sender.sendMessage("Gave " + amount + " " + material + " to " + target.getName());
+        target.sendMessage("You received " + amount + " " + material);
+    }
+}
+```
+
+**Supported types:**
+- Players: `Player`
+- Numbers: `int`, `double`, `float`, `long`
+- Text: `String`
+- Materials: `Material` (Bukkit)
+- Custom types via [ArgumentProvider](/api/argument-provider)
+
+## Optional Arguments
+
+Make arguments optional using the `@Opt` annotation:
+
+```java
+public class HealCommand {
+    @Command("heal")
+    @Description("Heal yourself or another player")
+    public static void heal(
+        @Sender Player sender,
+        @Name("target") @Opt Player target
+    ) {
+        // If no target specified, heal the sender
+        Player playerToHeal = target != null ? target : sender;
+        
+        playerToHeal.setHealth(playerToHeal.getMaxHealth());
+        
+        if (playerToHeal == sender) {
+            sender.sendMessage("You have been healed!");
+        } else {
+            sender.sendMessage("Healed " + playerToHeal.getName());
+            playerToHeal.sendMessage("You have been healed by " + sender.getName());
+        }
+    }
+}
+```
+
+**Usage:**
+- `/heal` - Heals yourself
+- `/heal PlayerName` - Heals the specified player
+
+### Default to Sender
+
+Use `@Opt(Opt.Type.SENDER)` to automatically use the sender when no argument is provided:
+
+```java
+public class HealCommand {
+    @Command("heal")
+    @Description("Heal yourself or another player")
+    public static void heal(
+        @Sender Player sender,
+        @Name("target") @Opt(Opt.Type.SENDER) Player target
+    ) {
+        // target will automatically be the sender if not specified
+        target.setHealth(target.getMaxHealth());
+        
+        if (target == sender) {
+            sender.sendMessage("You have been healed!");
+        } else {
+            sender.sendMessage("Healed " + target.getName());
+            target.sendMessage("You have been healed by " + sender.getName());
+        }
+    }
+}
+```
+
+## Adding Permissions
+
+Restrict command access with the `@Permission` annotation:
+
+```java
+public class GamemodeCommand {
+    @Command("gamemode")
+    @Description("Change your gamemode")
+    @Permission("myplugin.gamemode")
+    public static void gamemode(
+        @Sender Player player,
+        @Name("mode") GameMode mode
+    ) {
+        player.setGameMode(mode);
+        player.sendMessage("Gamemode set to " + mode);
+    }
+}
+```
+
+**Special permission values:**
+- `@Permission("op")` - Requires operator status
+- `@Permission("console")` - Console only
+- `@Permission("myplugin.command")` - Requires specific permission node
+
+### Custom Permission Messages
+
+```java
+@Command("admin")
+@Permission(value = "myplugin.admin", message = "You must be an admin to use this!")
+public static void admin(@Sender Player player) {
+    player.sendMessage("Welcome to the admin panel");
+}
+```
+
+## Next Steps
+
+Now that you understand basic commands, explore more advanced features:
+
+- [Complex Commands](/examples/complex-commands) - Flags, ranges, and greedy arguments
+- [Subcommands](/examples/subcommands) - Organize related commands
+- [Custom Types](/examples/custom-types) - Create custom argument providers

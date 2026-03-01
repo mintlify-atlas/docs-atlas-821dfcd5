@@ -1,0 +1,164 @@
+---
+title: Hytale
+description: Setup and usage guide for Blade on Hytale
+---
+
+The Hytale platform provides Blade command framework support for Hytale servers.
+
+<Warning>
+Hytale is currently in development. The Hytale platform support is prepared for when the game releases and the API becomes available.
+</Warning>
+
+## Requirements
+
+- Java 17 or higher (estimated requirement)
+- Hytale server
+
+## Installation
+
+<Tabs>
+  <Tab title="Maven">
+    ```xml
+    <dependencies>
+        <dependency>
+            <groupId>io.github.vaperion.blade</groupId>
+            <artifactId>hytale</artifactId>
+            <version>VERSION</version>
+            <scope>provided</scope>
+        </dependency>
+    </dependencies>
+    ```
+  </Tab>
+  <Tab title="Gradle (Groovy)">
+    ```groovy
+    dependencies {
+        implementation 'io.github.vaperion.blade:hytale:VERSION'
+    }
+    ```
+  </Tab>
+  <Tab title="Gradle (Kotlin)">
+    ```kotlin
+    dependencies {
+        implementation("io.github.vaperion.blade:hytale:VERSION")
+    }
+    ```
+  </Tab>
+</Tabs>
+
+Replace `VERSION` with the latest version available on Maven Central.
+
+## Setup
+
+Initialize Blade in your plugin's initialization using `BladeHytalePlatform`:
+
+```java
+public class MyHytalePlugin extends PluginBase {
+    @Override
+    public void onEnable() {
+        Blade.forPlatform(new BladeHytalePlatform(this))
+            .config(cfg -> {
+                cfg.commandQualifier("myplugin"); // Optional
+                cfg.defaultPermissionMessage(
+                    Message.text("No permission!")
+                );
+            })
+            .bind(binder -> {
+                // Optional: Register custom argument providers
+                binder.bind(Player.class, new MyCustomPlayerProvider());
+            })
+            .build()
+            // Register all commands in a package (including sub-packages):
+            .registerPackage(MyHytalePlugin.class, "com.example.commands")
+            // or register them individually:
+            .register(ExampleCommand.class)
+        ;
+    }
+}
+```
+
+## Features
+
+### Built-in Argument Types
+
+The Hytale platform includes built-in argument providers for:
+
+- `Player` - Online player (entity) lookup
+- `PlayerRef` - Player reference lookup (universe-wide)
+- `ConsoleSender` - Console sender type
+
+### Player Types
+
+Hytale provides two player types:
+
+- **`Player`**: Represents an actual player entity in the world
+- **`PlayerRef`**: Represents a reference to a player that may or may not be online
+
+Use `PlayerRef` for commands that should work with offline players:
+
+```java
+@Command("ban")
+@Permission("myplugin.ban")
+public void ban(
+    @Sender ConsoleSender sender,
+    @Name("player") PlayerRef playerRef,
+    @Name("reason") @Greedy String reason
+) {
+    // Ban logic using PlayerRef
+}
+```
+
+### Hytale Messages
+
+Hytale uses its own `Message` system for text and messaging:
+
+```java
+cfg.defaultPermissionMessage(
+    Message.text("You don't have permission!")
+);
+```
+
+### Example Command
+
+```java
+public class TeleportCommand {
+    @Command("tp")
+    @Description("Teleport to a player")
+    @Permission("myplugin.teleport")
+    public void teleport(
+        @Sender Player sender,
+        @Name("target") Player target
+    ) {
+        sender.teleport(target.getLocation());
+        sender.sendMessage(
+            Message.text("Teleported to " + target.getName())
+        );
+    }
+}
+```
+
+### Example with PlayerRef
+
+```java
+public class StatsCommand {
+    @Command("stats")
+    @Description("View player statistics")
+    @Permission("myplugin.stats")
+    public void stats(
+        @Sender Player sender,
+        @Name("player") @Opt(Opt.Type.SENDER) PlayerRef playerRef
+    ) {
+        // Fetch and display stats for the PlayerRef
+        // This works even if the player is offline
+        sender.sendMessage(
+            Message.text("Stats for " + playerRef.getName() + ": ...")
+        );
+    }
+}
+```
+
+## Next Steps
+
+- Learn about [creating commands](/core-concepts/commands)
+- Explore [argument providers](/api/argument-provider)
+- Understand [permissions](/advanced/permissions)
+- Stay updated on [Hytale development](https://hytale.com/)

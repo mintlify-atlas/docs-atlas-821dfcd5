@@ -1,0 +1,356 @@
+---
+title: Validation & Special Annotations
+description: Annotations for validation, error handling, and advanced features
+---
+
+Validation annotations and special-purpose annotations for advanced use cases.
+
+## Validation
+
+### @Range
+
+Validates numeric parameters against minimum and maximum bounds.
+
+<ParamField path="min" type="double" default="Double.NaN">
+  Minimum allowed value (inclusive). Use `Double.NaN` to leave unspecified.
+</ParamField>
+
+<ParamField path="max" type="double" default="Double.NaN">
+  Maximum allowed value (inclusive). Use `Double.NaN` to leave unspecified.
+</ParamField>
+
+<CodeGroup>
+```java Range Validation
+@Command("setlevel")
+public void setLevelCommand(
+    @Sender Player player,
+    @Name("level") @Range(min = 1, max = 100) int level
+) {
+    player.setLevel(level);
+}
+// Accepts: 1-100
+// Rejects: 0, -1, 101
+```
+
+```java Percentage Range
+@Command("damage")
+public void damageCommand(
+    @Sender Player player,
+    @Name("percent") @Range(min = 0.0, max = 100.0) double percent
+) {
+    double damage = (percent / 100.0) * 20.0;
+    player.damage(damage);
+}
+```
+
+```java Unbounded Range
+@Command("setbalance")
+public void setBalanceCommand(
+    @Sender Player player,
+    @Name("target") Player target,
+    @Name("amount") @Range(min = 0) double amount
+) {
+    economy.setBalance(target, amount);
+}
+// Must be >= 0, no maximum
+```
+</CodeGroup>
+
+### Error Messages
+
+When validation fails, Blade sends an error message to the command sender:
+
+```
+The parameter 'level' must be between 1 and 100
+```
+
+You can customize error messages globally through the Blade builder:
+
+```java
+Blade.forPlatform(plugin)
+    .config(config -> config
+        .invalidNumberError("Invalid number for '%s'")  
+        .numberOutOfRangeError("'%s' must be between %s and %s")
+    )
+    .build();
+```
+
+---
+
+## Advanced Annotations
+
+### @Forwarded
+
+Marks custom annotations to be forwarded to argument providers.
+
+<Info>
+  This is a meta-annotation (annotation for annotations) that enables type-safe parameter metadata.
+</Info>
+
+```java
+@Retention(RetentionPolicy.RUNTIME)
+@Target(ElementType.PARAMETER)
+@Forwarded
+public @interface ItemCategory {
+    String value();
+}
+
+public class ItemProvider implements ArgumentProvider<ItemStack> {
+    @Override
+    public ItemStack provide(Context context, Argument argument) {
+        // Access the forwarded annotation
+        ItemCategory category = argument.getParameter()
+            .getAnnotation(ItemCategory.class);
+        
+        if (category != null) {
+            return findItem(argument.getString(), category.value());
+        }
+        return findItem(argument.getString());
+    }
+}
+
+@Command("give")
+public void giveCommand(
+    @Sender Player player,
+    @Name("item") @ItemCategory("weapons") @Provider(ItemProvider.class) ItemStack item
+) {
+    player.getInventory().addItem(item);
+}
+```
+
+<Note>
+  Forwarded annotations are ignored by Blade's parameter resolver and passed directly to the argument provider. This is cleaner than using `@Data` for structured metadata.
+</Note>
+
+---
+
+### @EnumValue
+
+Configures enum parsing behavior for the default enum argument provider.
+
+<ParamField path="name" type="String" default="">
+  Primary display name for the enum value. Defaults to the enum constant name.
+</ParamField>
+
+<ParamField path="aliases" type="String[]" default="{}">
+  Additional accepted names for this enum value.
+</ParamField>
+
+<ParamField path="priority" type="int" default="0">
+  Priority for resolving ambiguous matches. Higher values win.
+</ParamField>
+
+<ParamField path="hidden" type="boolean" default="false">
+  Whether to hide this value from tab completion suggestions.
+</ParamField>
+
+<ParamField path="block" type="boolean" default="false">
+  Whether to prevent this value from being used.
+</ParamField>
+
+```java
+public enum GameMode {
+    @EnumValue(name = "survival", aliases = {"s", "surv"})
+    SURVIVAL,
+    
+    @EnumValue(name = "creative", aliases = {"c", "crea"})
+    CREATIVE,
+    
+    @EnumValue(name = "adventure", aliases = {"a", "adv"})
+    ADVENTURE,
+    
+    @EnumValue(name = "spectator", aliases = {"sp", "spec"}, hidden = true)
+    SPECTATOR,
+    
+    @EnumValue(block = true)
+    DEBUG  // Cannot be used
+}
+
+@Command("gamemode")
+public void gamemodeCommand(
+    @Sender Player player,
+    @Name("mode") GameMode mode
+) {
+    player.setGameMode(convertMode(mode));
+}
+// Accepts: survival, s, surv, creative, c, etc.
+// Tab completion shows: survival, creative, adventure (spectator hidden)
+// Rejects: DEBUG
+```
+
+<CodeGroup>
+```java Priority Resolution
+public enum ItemRarity {
+    @EnumValue(name = "common", aliases = {"c"}, priority = 1)
+    COMMON,
+    
+    @EnumValue(name = "uncommon", aliases = {"u", "c"}, priority = 2)
+    UNCOMMON,
+    
+    @EnumValue(name = "rare", aliases = {"r"})
+    RARE
+}
+// Input "c" matches both COMMON and UNCOMMON
+// UNCOMMON wins due to higher priority
+```
+
+```java Hidden Values
+public enum Rank {
+    @EnumValue(name = "member")
+    MEMBER,
+    
+    @EnumValue(name = "moderator") 
+    MODERATOR,
+    
+    @EnumValue(name = "admin", hidden = true)
+    ADMIN,
+    
+    @EnumValue(name = "owner", hidden = true)
+    OWNER
+}
+// Tab completion only shows: member, moderator
+// But "admin" and "owner" can still be typed
+```
+
+```java Blocked Values
+public enum Feature {
+    @EnumValue(name = "chat")
+    CHAT,
+    
+    @EnumValue(name = "pvp")
+    PVP,
+    
+    @EnumValue(name = "experimental", block = true)
+    EXPERIMENTAL
+}
+// "experimental" cannot be used and won't appear in suggestions
+```
+</CodeGroup>
+
+---
+
+### @HiddenEnumValue (Deprecated)
+
+<Warning>
+  This annotation is deprecated. Use `@EnumValue(hidden = true)` or `@EnumValue(block = true)` instead.
+</Warning>
+
+Indicates an enum value should be hidden from suggestions.
+
+<ParamField path="block" type="boolean" default="true">
+  Whether to block the usage of the enum value.
+</ParamField>
+
+```java
+public enum GameMode {
+    SURVIVAL,
+    CREATIVE,
+    ADVENTURE,
+    
+    @HiddenEnumValue
+    SPECTATOR,
+    
+    @HiddenEnumValue(block = true)
+    DEBUG
+}
+```
+
+**Migration to @EnumValue:**
+
+```java
+// Old
+@HiddenEnumValue
+SPECTATOR
+
+// New
+@EnumValue(hidden = true)
+SPECTATOR
+
+// Old
+@HiddenEnumValue(block = true)
+DEBUG
+
+// New  
+@EnumValue(block = true)
+DEBUG
+```
+
+---
+
+## Error Handling
+
+### Validation Errors
+
+Blade automatically handles validation errors and sends appropriate messages:
+
+<CodeGroup>
+```java Range Error
+@Command("setlevel")
+public void setLevel(@Name("level") @Range(min = 1, max = 100) int level) {}
+
+// Input: /setlevel 150
+// Output: The parameter 'level' must be between 1 and 100
+```
+
+```java Type Error
+@Command("give")
+public void give(@Name("amount") int amount) {}
+
+// Input: /give abc
+// Output: Invalid number for parameter 'amount'
+```
+
+```java Enum Error
+@Command("gamemode")
+public void gamemode(@Name("mode") GameMode mode) {}
+
+// Input: /gamemode xyz
+// Output: Invalid value 'xyz' for parameter 'mode'
+```
+</CodeGroup>
+
+### Custom Validation
+
+For complex validation, use custom argument providers:
+
+```java
+public class PositiveIntProvider implements ArgumentProvider<Integer> {
+    @Override
+    public Integer provide(Context context, Argument argument) throws BladeExitMessage {
+        int value = Integer.parseInt(argument.getString());
+        
+        if (value <= 0) {
+            throw new BladeExitMessage("Value must be positive!");
+        }
+        
+        return value;
+    }
+}
+
+@Command("example")
+public void example(
+    @Name("value") @Provider(PositiveIntProvider.class) int value
+) {
+    // value is guaranteed to be positive
+}
+```
+
+### Combining Validations
+
+You can combine multiple validation approaches:
+
+```java
+@Command("transfer")
+public void transferCommand(
+    @Sender Player player,
+    @Name("target") @Provider(OnlinePlayerProvider.class) Player target,
+    @Name("amount") @Range(min = 1, max = 10000) int amount
+) {
+    // Both custom provider validation AND range validation
+    if (player.equals(target)) {
+        throw new BladeExitMessage("You cannot transfer to yourself!");
+    }
+    
+    transferMoney(player, target, amount);
+}
+```

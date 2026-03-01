@@ -1,0 +1,169 @@
+---
+title: Paper
+description: Setup and usage guide for Blade on Paper with Brigadier support
+---
+
+The Paper platform provides enhanced Blade command framework support for Paper servers with native Brigadier integration.
+
+## Requirements
+
+<Warning>
+Paper has different artifact requirements based on your Minecraft and Java versions:
+
+- **Minecraft 1.13+ with Java 21+**: Use the `paper` artifact
+- **Minecraft 1.13+ with Java 17-21**: Use the `paper-legacy` artifact  
+- **Minecraft &lt;1.13 or Java &lt;17**: Use the `bukkit` artifact
+</Warning>
+
+### Why Two Artifacts?
+
+Paper API versions for Minecraft 1.20.6+ require Java 21. To provide proper Brigadier support for newer versions while maintaining compatibility with older setups, Blade offers two Paper artifacts.
+
+## Installation
+
+### Paper (Java 21+)
+
+<Tabs>
+  <Tab title="Maven">
+    ```xml
+    <dependencies>
+        <dependency>
+            <groupId>io.github.vaperion.blade</groupId>
+            <artifactId>paper</artifactId>
+            <version>VERSION</version>
+            <scope>provided</scope>
+        </dependency>
+    </dependencies>
+    ```
+  </Tab>
+  <Tab title="Gradle (Groovy)">
+    ```groovy
+    dependencies {
+        implementation 'io.github.vaperion.blade:paper:VERSION'
+    }
+    ```
+  </Tab>
+  <Tab title="Gradle (Kotlin)">
+    ```kotlin
+    dependencies {
+        implementation("io.github.vaperion.blade:paper:VERSION")
+    }
+    ```
+  </Tab>
+</Tabs>
+
+### Paper Legacy (Java 17-21)
+
+<Tabs>
+  <Tab title="Maven">
+    ```xml
+    <dependencies>
+        <dependency>
+            <groupId>io.github.vaperion.blade</groupId>
+            <artifactId>paper-legacy</artifactId>
+            <version>VERSION</version>
+            <scope>provided</scope>
+        </dependency>
+    </dependencies>
+    ```
+  </Tab>
+  <Tab title="Gradle (Groovy)">
+    ```groovy
+    dependencies {
+        implementation 'io.github.vaperion.blade:paper-legacy:VERSION'
+    }
+    ```
+  </Tab>
+  <Tab title="Gradle (Kotlin)">
+    ```kotlin
+    dependencies {
+        implementation("io.github.vaperion.blade:paper-legacy:VERSION")
+    }
+    ```
+  </Tab>
+</Tabs>
+
+Replace `VERSION` with the latest version available on Maven Central.
+
+## Setup
+
+Initialize Blade in your plugin's `onEnable()` method using `BladePaperPlatform`:
+
+```java
+public class MyPlugin extends JavaPlugin {
+    @Override
+    public void onEnable() {
+        Blade.forPlatform(new BladePaperPlatform(this))
+            .config(cfg -> {
+                cfg.commandQualifier("myplugin"); // Optional, defaults to your plugin's name
+                cfg.defaultPermissionMessage("No permission!"); // Optional
+            })
+            .bind(binder -> {
+                // Optional: Register custom argument providers
+                binder.bind(Player.class, new MyCustomPlayerProvider());
+            })
+            .build()
+            // Register all commands in a package (including sub-packages):
+            .registerPackage(MyPlugin.class, "com.example.commands")
+            // or register them individually:
+            .register(ExampleCommand.class)
+        ;
+    }
+}
+```
+
+## Features
+
+### Brigadier Integration
+
+The Paper platform automatically hooks into Paper's Brigadier implementation, providing:
+
+- Enhanced client-side tab completion
+- Command syntax validation
+- Better command suggestions
+- Automatic command tree synchronization
+
+When Blade initializes, you'll see a log message indicating successful Brigadier integration:
+
+```
+Successfully hooked into Brigadier.
+```
+
+If Brigadier is not available, Blade will fall back to standard suggestion handling:
+
+```
+Brigadier support not available, falling back to standard suggestions.
+```
+
+### Built-in Argument Types
+
+The Paper platform inherits all Bukkit argument providers:
+
+- `Player` - Online player lookup
+- `OfflinePlayer` - Offline player lookup
+- `ConsoleCommandSender` - Console sender type
+
+### Example Command
+
+```java
+public class GamemodeCommand {
+    @Command("gm")
+    @Description("Change gamemode")
+    @Permission("myplugin.gamemode")
+    public void gamemode(
+        @Sender Player sender,
+        @Name("mode") GameMode mode,
+        @Name("target") @Opt(Opt.Type.SENDER) Player target
+    ) {
+        target.setGameMode(mode);
+        sender.sendMessage("Set " + target.getName() + "'s gamemode to " + mode);
+    }
+}
+```
+
+## Next Steps
+
+- Learn about [creating commands](/core-concepts/commands)
+- Explore [argument providers](/api/argument-provider)
+- Understand [permissions](/advanced/permissions)
+- Check out [Brigadier integration](/advanced/brigadier)

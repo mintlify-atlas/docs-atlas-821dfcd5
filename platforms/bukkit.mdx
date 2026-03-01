@@ -1,0 +1,108 @@
+---
+title: Bukkit
+description: Setup and usage guide for Blade on Bukkit
+---
+
+The Bukkit platform provides Blade command framework support for Bukkit and Spigot servers.
+
+## Requirements
+
+- Java 8 or higher
+- Bukkit or Spigot server
+
+## Installation
+
+<Tabs>
+  <Tab title="Maven">
+    ```xml
+    <dependencies>
+        <dependency>
+            <groupId>io.github.vaperion.blade</groupId>
+            <artifactId>bukkit</artifactId>
+            <version>VERSION</version>
+            <scope>provided</scope>
+        </dependency>
+    </dependencies>
+    ```
+  </Tab>
+  <Tab title="Gradle (Groovy)">
+    ```groovy
+    dependencies {
+        implementation 'io.github.vaperion.blade:bukkit:VERSION'
+    }
+    ```
+  </Tab>
+  <Tab title="Gradle (Kotlin)">
+    ```kotlin
+    dependencies {
+        implementation("io.github.vaperion.blade:bukkit:VERSION")
+    }
+    ```
+  </Tab>
+</Tabs>
+
+Replace `VERSION` with the latest version available on Maven Central.
+
+## Setup
+
+Initialize Blade in your plugin's `onEnable()` method using `BladeBukkitPlatform`:
+
+```java
+public class MyPlugin extends JavaPlugin {
+    @Override
+    public void onEnable() {
+        Blade.forPlatform(new BladeBukkitPlatform(this))
+            .config(cfg -> {
+                cfg.commandQualifier("myplugin"); // Optional, defaults to your plugin's name
+                cfg.defaultPermissionMessage("No permission!"); // Optional
+            })
+            .bind(binder -> {
+                // Optional: Register custom argument providers
+                binder.bind(Player.class, new MyCustomPlayerProvider());
+            })
+            .build()
+            // Register all commands in a package (including sub-packages):
+            .registerPackage(MyPlugin.class, "com.example.commands")
+            // or register them individually:
+            .register(ExampleCommand.class)
+        ;
+    }
+}
+```
+
+## Features
+
+### Built-in Argument Types
+
+The Bukkit platform includes built-in argument providers for:
+
+- `Player` - Online player lookup
+- `OfflinePlayer` - Offline player lookup
+- `ConsoleCommandSender` - Console sender type
+
+### Command Registration
+
+Commands are automatically registered with Bukkit's command system. On Minecraft 1.13+, Blade will automatically sync commands with Brigadier for improved client-side tab completion.
+
+### Example Command
+
+```java
+public class TeleportCommand {
+    @Command("tp")
+    @Description("Teleport to a player")
+    @Permission("myplugin.tp")
+    public void teleport(
+        @Sender Player sender,
+        @Name("target") Player target
+    ) {
+        sender.teleport(target.getLocation());
+        sender.sendMessage("Teleported to " + target.getName());
+    }
+}
+```
+
+## Next Steps
+
+- Learn about [creating commands](/core-concepts/commands)
+- Explore [argument providers](/api/argument-provider)
+- Understand [permissions](/advanced/permissions)

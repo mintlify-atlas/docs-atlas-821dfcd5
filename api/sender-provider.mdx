@@ -1,0 +1,318 @@
+---
+title: SenderProvider
+description: Interface for converting command senders into specific types
+---
+
+`SenderProvider<T>` is a functional interface that converts the generic command sender into platform-specific sender types. It enables type-safe sender injection in command methods, allowing you to receive `Player`, `ConsoleCommandSender`, or custom sender types directly as parameters.
+
+## Interface Definition
+
+```java
+@FunctionalInterface
+public interface SenderProvider<T> {
+    @Nullable
+    T provide(@NotNull Context context, @NotNull Sender<?> sender) throws BladeParseError;
+}
+```
+
+## Core Method
+
+### provide()
+
+Converts the generic command sender into a specific type.
+
+<ParamField path="context" type="Context" required>
+  The command execution context containing metadata and command information
+</ParamField>
+
+<ParamField path="sender" type="Sender<?>" required>
+  The generic command sender to convert
+</ParamField>
+
+<ResponseField name="return" type="T">
+  The converted sender value, or `null` if conversion is not possible
+</ResponseField>
+
+**Throws:** `BladeParseError` if the sender cannot be converted (usually indicates wrong sender type)
+
+#### Example Implementation
+
+```java
+public class PlayerSenderProvider implements SenderProvider<Player> {
+    @Override
+    public Player provide(@NotNull Context context, @NotNull Sender<?> sender) 
+            throws BladeParseError {
+        if (sender.isConsole()) {
+            throw BladeParseError.fatal("This command can only be used by players.");
+        }
+
+        Object underlying = sender.underlying();
+        if (underlying instanceof Player) {
+            return (Player) underlying;
+        }
+
+        throw BladeParseError.fatal("Unable to convert sender to Player.");
+    }
+
+    @Override
+    public String friendlyName(boolean plural) {
+        return plural ? "players" : "player";
+    }
+}
+```
+
+## Default Methods
+
+### friendlyName()
+
+Provides a user-friendly name for this sender type, used in error messages.
+
+```java
+default String friendlyName(boolean plural) {
+    return null;
+}
+```
+
+<ParamField path="plural" type="boolean" required>
+  Whether the name should be in plural form
+</ParamField>
+
+<ResponseField name="return" type="String">
+  The friendly name for this sender type, or `null` to use a default name
+</ResponseField>
+
+This name appears in permission error messages and usage restrictions. For example:
+- Singular: "This command can only be used by a **player**"
+- Plural: "This command can only be used by **players**"
+
+#### Example
+
+```java
+public class ConsoleSenderProvider implements SenderProvider<ConsoleCommandSender> {
+    @Override
+    public String friendlyName(boolean plural) {
+        return plural ? "console senders" : "console";
+    }
+
+    @Override
+    public ConsoleCommandSender provide(@NotNull Context context, 
+                                        @NotNull Sender<?> sender) 
+            throws BladeParseError {
+        if (!sender.isConsole()) {
+            // Uses friendlyName() in error message:
+            // "This command can only be used by console"
+            throw BladeParseError.fatal(
+                "This command can only be used by " + friendlyName(false) + "."
+            );
+        }
+
+        return (ConsoleCommandSender) sender.underlying();
+    }
+}
+```
+
+## Common Use Cases
+
+### Player-Only Commands
+
+Restrict commands to player senders:
+
+```java
+public class PlayerSenderProvider implements SenderProvider<Player> {
+    @Override
+    public Player provide(@NotNull Context context, @NotNull Sender<?> sender) 
+            throws BladeParseError {
+        if (sender.isConsole()) {
+            throw BladeParseError.fatal("Only players can use this command.");
+        }
+        return (Player) sender.underlying();
+    }
+
+    @Override
+    public String friendlyName(boolean plural) {
+        return plural ? "players" : "player";
+    }
+}
+```
+
+### Console-Only Commands
+
+Restrict commands to console senders:
+
+```java
+public class ConsoleSenderProvider implements SenderProvider<ConsoleCommandSender> {
+    @Override
+    public ConsoleCommandSender provide(@NotNull Context context, 
+                                        @NotNull Sender<?> sender) 
+            throws BladeParseError {
+        if (!sender.isConsole()) {
+            throw BladeParseError.fatal("This command can only be run from console.");
+        }
+        return (ConsoleCommandSender) sender.underlying();
+    }
+}
+```
+
+### Permission-Based Sender Types
+
+Create custom sender types with permission checks:
+
+```java
+public class AdminPlayer {
+    private final Player player;
+
+    public AdminPlayer(Player player) {
+        this.player = player;
+    }
+
+    public Player getPlayer() {
+        return player;
+    }
+}
+
+public class AdminPlayerProvider implements SenderProvider<AdminPlayer> {
+    @Override
+    public AdminPlayer provide(@NotNull Context context, @NotNull Sender<?> sender) 
+            throws BladeParseError {
+        if (sender.isConsole()) {
+            throw BladeParseError.fatal("Only players can use this command.");
+        }
+
+        Player player = (Player) sender.underlying();
+        if (!player.hasPermission("server.admin")) {
+            throw BladeParseError.fatal("You must be an admin to use this command.");
+        }
+
+        return new AdminPlayer(player);
+    }
+
+    @Override
+    public String friendlyName(boolean plural) {
+        return plural ? "administrators" : "administrator";
+    }
+}
+```
+
+### Multi-Platform Sender
+
+Handle different platform sender types:
+
+```java
+public class UniversalPlayerProvider implements SenderProvider<UniversalPlayer> {
+    @Override
+    public UniversalPlayer provide(@NotNull Context context, @NotNull Sender<?> sender) 
+            throws BladeParseError {
+        Object underlying = sender.underlying();
+
+        // Bukkit
+        if (underlying instanceof org.bukkit.entity.Player) {
+            return new BukkitPlayer((org.bukkit.entity.Player) underlying);
+        }
+
+        // BungeeCord
+        if (underlying instanceof net.md_5.bungee.api.connection.ProxiedPlayer) {
+            return new BungeePlayer((ProxiedPlayer) underlying);
+        }
+
+        // Velocity
+        if (underlying instanceof com.velocitypowered.api.proxy.Player) {
+            return new VelocityPlayer((com.velocitypowered.api.proxy.Player) underlying);
+        }
+
+        throw BladeParseError.fatal("Unknown sender type: " + underlying.getClass());
+    }
+}
+```
+
+## Error Handling
+
+Use `BladeParseError` to report sender conversion errors:
+
+### Fatal Errors
+
+Fatal errors stop command execution and display the error message:
+
+```java
+if (sender.isConsole()) {
+    throw BladeParseError.fatal("This command cannot be used from console.");
+}
+```
+
+### Type Checking
+
+Always verify the sender type before casting:
+
+```java
+Object underlying = sender.underlying();
+if (!(underlying instanceof Player)) {
+    throw BladeParseError.fatal(
+        "Expected Player but got " + underlying.getClass().getSimpleName()
+    );
+}
+```
+
+### Null Handling
+
+Returning `null` from `provide()` will cause command execution to fail silently. Prefer throwing `BladeParseError` with descriptive messages:
+
+```java
+// Bad: Silent failure
+@Override
+public Player provide(@NotNull Context context, @NotNull Sender<?> sender) {
+    if (sender.isConsole()) return null; // No feedback to user
+    return (Player) sender.underlying();
+}
+
+// Good: Clear error message
+@Override
+public Player provide(@NotNull Context context, @NotNull Sender<?> sender) 
+        throws BladeParseError {
+    if (sender.isConsole()) {
+        throw BladeParseError.fatal("Only players can use this command.");
+    }
+    return (Player) sender.underlying();
+}
+```
+
+## Registration
+
+Register sender providers with the Blade instance:
+
+```java
+Blade.of()
+    .bindSender(Player.class, new PlayerSenderProvider())
+    .bindSender(ConsoleCommandSender.class, new ConsoleSenderProvider())
+    .bindSender(AdminPlayer.class, new AdminPlayerProvider())
+    .build();
+```
+
+## Usage in Commands
+
+Once registered, use the sender type directly in command method parameters:
+
+```java
+@Command("teleport")
+public void teleport(Player sender, Player target) {
+    // 'sender' is automatically injected using PlayerSenderProvider
+    sender.teleport(target.getLocation());
+}
+
+@Command("stop")
+public void stop(ConsoleCommandSender console) {
+    // Only console can execute this command
+    console.sendMessage("Stopping server...");
+}
+
+@Command("admin")
+public void adminCommand(AdminPlayer admin) {
+    // Only players with admin permission can execute
+    admin.getPlayer().sendMessage("Admin command executed!");
+}
+```
+
+## Related
+
+- [Context](/api/context) - Command execution context
+- [Sender](/api/context#sender) - Generic command sender wrapper
+- [BladeParseError](#error-handling) - Exception for conversion errors
+- [ArgumentProvider](/api/argument-provider) - Interface for argument conversion

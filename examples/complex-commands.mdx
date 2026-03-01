@@ -1,0 +1,362 @@
+---
+title: 'Complex Commands'
+description: 'Advanced command features including flags, ranges, and custom providers'
+---
+
+This guide covers advanced Blade features that let you build sophisticated commands with flags, validation, and custom parsing.
+
+## The Complete Example
+
+Here's a comprehensive command showcasing all of Blade's major features:
+
+```java
+public class ExampleCommand {
+    @Command("example")
+    @Description("The description of your command, optional.")
+    @Permission("command.permission") // Optional, set to "op" to require OP
+    @Hidden // Optional, hides the command from the generated help
+    @Async // Optional
+    @Quoted // Optional, parses quoted strings into a single argument
+    public static void example(
+        // Command sender, required:
+        @Sender CommandSender sender,
+        // Type can be: CommandSender, Player, ConsoleCommandSender
+        // Or any custom type if you register a SenderProvider<T>.
+
+        // Regular arguments:
+        @Name("player") Player player,
+        // You can make the argument optional (will be null if not provided):
+        @Name("player") @Opt Player player,
+        // or, you can make it default to the sender if not provided:
+        @Name("player") @Opt(Opt.Type.SENDER) Player player,
+        // Multi-word (combined) string arguments:
+        @Name("message") @Greedy String message,
+        // Number arguments with a range:
+        @Name("amount") @Range(min = 1, max = 64) int amount,
+
+        // You can also use custom providers for just one argument:
+        @Provider(MyPlayerProvider.class) Player customPlayer,
+        // And you can specify the scope (`BOTH`, `PARSER`, `SUGGESTIONS`), defaults to `BOTH`:
+        @Provider(value = MyPlayerProvider.class, scope = Provider.Scope.SUGGESTIONS) Player customPlayer2,
+
+        // Command flags:
+        @Flag(value = 's', description = "Optional description") boolean flagSilent,
+        // You can also have complex types as flags:
+        @Flag('p') Player anotherPlayer
+    ) {
+        sender.sendMessage("(You -> " + anotherPlayer + ") $" + amount);
+
+        if (!flagSilent) {
+            player.sendMessage("(" + sender.getName() + " -> You) +$" + amount);
+        } else {
+            player.sendMessage("(Anonymous -> You) +$" + amount);
+        }
+    }
+}
+```
+
+## Feature Breakdown
+
+Let's explore each advanced feature in detail.
+
+### Greedy Arguments
+
+Use `@Greedy` to capture all remaining text as a single string:
+
+```java
+public class BroadcastCommand {
+    @Command("broadcast")
+    @Description("Send a message to all players")
+    @Permission("myplugin.broadcast")
+    public static void broadcast(
+        @Sender CommandSender sender,
+        @Name("message") @Greedy String message
+    ) {
+        // @Greedy captures everything after the command as one string
+        // No need for quotes: /broadcast Hello everyone, this is a test!
+        
+        for (Player player : Bukkit.getOnlinePlayers()) {
+            player.sendMessage(ChatColor.GOLD + "[Broadcast] " + ChatColor.RESET + message);
+        }
+    }
+}
+```
+
+**Usage:**
+- `/broadcast This entire message is captured` - Works perfectly
+- Without `@Greedy`, you'd need: `/broadcast "This entire message is captured"`
+
+### Quoted Arguments
+
+The `@Quoted` annotation allows arguments to contain spaces when wrapped in quotes:
+
+```java
+public class NickCommand {
+    @Command("nick")
+    @Description("Set a player's nickname")
+    @Quoted // Enables quote parsing for this command
+    public static void nick(
+        @Sender Player sender,
+        @Name("nickname") String nickname
+    ) {
+        // With @Quoted, players can use:
+        // /nick "Cool Name" - Sets nickname to "Cool Name"
+        // /nick SimpleName - Sets nickname to "SimpleName"
+        
+        sender.setDisplayName(nickname);
+        sender.sendMessage("Nickname set to: " + nickname);
+    }
+}
+```
+
+**Difference from `@Greedy`:**
+- `@Greedy` - Captures ALL remaining arguments
+- `@Quoted` - Allows ONE argument to contain spaces if quoted
+
+### Range Validation
+
+Use `@Range` to automatically validate numeric arguments:
+
+```java
+public class GiveCommand {
+    @Command("give")
+    @Description("Give items to a player")
+    @Permission("myplugin.give")
+    public static void give(
+        @Sender CommandSender sender,
+        @Name("player") Player target,
+        @Name("item") Material item,
+        @Name("amount") @Range(min = 1, max = 64) int amount
+    ) {
+        // Range is automatically validated - no manual checking needed!
+        // Players cannot specify less than 1 or more than 64
+        
+        ItemStack stack = new ItemStack(item, amount);
+        target.getInventory().addItem(stack);
+        
+        sender.sendMessage("Gave " + amount + " " + item + " to " + target.getName());
+    }
+}
+```
+
+**Range options:**
+- `@Range(min = 1)` - Minimum value only
+- `@Range(max = 100)` - Maximum value only
+- `@Range(min = 1, max = 64)` - Both minimum and maximum
+
+### Command Flags
+
+Flags provide optional switches that can be placed anywhere in the command:
+
+<Steps>
+  <Step title="Boolean Flags">
+    Simple on/off switches:
+
+    ```java
+    public class TeleportCommand {
+        @Command("tp")
+        @Description("Teleport to a player")
+        public static void teleport(
+            @Sender Player sender,
+            @Name("target") Player target,
+            @Flag(value = 's', description = "Silent teleport") boolean silent,
+            @Flag(value = 'f', description = "Force teleport", longName = "force") boolean force
+        ) {
+            sender.teleport(target.getLocation());
+            
+            if (!silent) {
+                target.sendMessage(sender.getName() + " teleported to you");
+            }
+            
+            if (force) {
+                // Override teleport protection, etc.
+            }
+        }
+    }
+    ```
+
+    **Usage:**
+    - `/tp PlayerName` - Normal teleport
+    - `/tp PlayerName -s` - Silent teleport
+    - `/tp PlayerName -s -f` - Silent and forced
+    - `/tp PlayerName --force` - Using long name
+  </Step>
+
+  <Step title="Value Flags">
+    Flags can accept values of any type:
+
+    ```java
+    public class PayCommand {
+        @Command("pay")
+        @Description("Send money to a player")
+        public static void pay(
+            @Sender Player sender,
+            @Name("amount") @Range(min = 1) double amount,
+            @Flag(value = 't', description = "Target player") Player target,
+            @Flag(value = 'm', description = "Optional message") String message
+        ) {
+            // Deduct from sender, add to target
+            // economy.withdraw(sender, amount);
+            // economy.deposit(target, amount);
+            
+            sender.sendMessage("Sent $" + amount + " to " + target.getName());
+            
+            if (message != null) {
+                target.sendMessage(sender.getName() + " sent you $" + amount + ": " + message);
+            } else {
+                target.sendMessage(sender.getName() + " sent you $" + amount);
+            }
+        }
+    }
+    ```
+
+    **Usage:**
+    - `/pay 100 -t PlayerName` - Send $100 to PlayerName
+    - `/pay 50 -t Bob -m "Thanks!"` - Send $50 with a message
+  </Step>
+
+  <Step title="Required Flags">
+    Make flags mandatory:
+
+    ```java
+    @Command("admin-action")
+    @Permission("myplugin.admin")
+    public static void adminAction(
+        @Sender Player sender,
+        @Flag(value = 'c', description = "Confirm action", required = true) boolean confirm
+    ) {
+        // This flag MUST be provided
+        sender.sendMessage("Admin action confirmed and executed!");
+    }
+    ```
+
+    **Usage:**
+    - `/admin-action` - Error: missing required flag -c
+    - `/admin-action -c` - Success!
+  </Step>
+</Steps>
+
+### Async Execution
+
+Run commands asynchronously to avoid blocking the main thread:
+
+```java
+public class DatabaseCommand {
+    @Command("lookup")
+    @Description("Look up player data from database")
+    @Async // This command runs on a separate thread
+    public static void lookup(
+        @Sender CommandSender sender,
+        @Name("player") String playerName
+    ) {
+        // This runs asynchronously - safe for database queries!
+        PlayerData data = database.getPlayerData(playerName);
+        
+        if (data == null) {
+            sender.sendMessage("Player not found in database");
+            return;
+        }
+        
+        sender.sendMessage("Player: " + playerName);
+        sender.sendMessage("Playtime: " + data.getPlaytime());
+        sender.sendMessage("Last seen: " + data.getLastSeen());
+    }
+}
+```
+
+**Important:** When using `@Async`, be careful not to access Bukkit API methods that must run on the main thread!
+
+### Hidden Commands
+
+Hide commands from the help menu:
+
+```java
+public class DebugCommand {
+    @Command("debug")
+    @Description("Debug command for developers")
+    @Hidden // Won't appear in /help
+    @Permission("myplugin.debug")
+    public static void debug(@Sender CommandSender sender) {
+        sender.sendMessage("Debug info: " + getDebugInfo());
+    }
+}
+```
+
+### Per-Parameter Custom Providers
+
+Override the provider for specific parameters:
+
+```java
+public class CustomParseCommand {
+    @Command("givecustom")
+    public static void giveCustom(
+        @Sender Player sender,
+        // Use default Player provider
+        @Name("target") Player normalTarget,
+        // Use custom provider that includes offline players
+        @Provider(OfflinePlayerProvider.class) Player offlineTarget
+    ) {
+        sender.sendMessage("Normal: " + normalTarget.getName());
+        sender.sendMessage("Offline: " + offlineTarget.getName());
+    }
+}
+```
+
+**Provider scopes:**
+- `Provider.Scope.BOTH` - Override both parsing and tab completion (default)
+- `Provider.Scope.PARSER` - Override only how the argument is parsed
+- `Provider.Scope.SUGGESTIONS` - Override only tab completion suggestions
+
+## Real-World Example
+
+Here's a practical economy command using multiple features:
+
+```java
+public class EconomyCommand {
+    @Command("economy pay")
+    @Description("Send money to another player")
+    @Permission("economy.pay")
+    public static void economyPay(
+        @Sender Player sender,
+        @Name("recipient") Player recipient,
+        @Name("amount") @Range(min = 0.01, max = 1000000) double amount,
+        @Flag(value = 's', description = "Send anonymously", longName = "silent") boolean silent,
+        @Flag(value = 'm', description = "Include a message") @Opt String message
+    ) {
+        // Validate sender has enough money
+        if (economy.getBalance(sender) < amount) {
+            sender.sendMessage(ChatColor.RED + "Insufficient funds!");
+            return;
+        }
+        
+        // Process transaction
+        economy.withdraw(sender, amount);
+        economy.deposit(recipient, amount);
+        
+        // Notify sender
+        sender.sendMessage(ChatColor.GREEN + "Sent $" + String.format("%.2f", amount) 
+            + " to " + recipient.getName());
+        
+        // Notify recipient
+        String fromName = silent ? "Someone" : sender.getName();
+        recipient.sendMessage(ChatColor.GREEN + fromName + " sent you $" 
+            + String.format("%.2f", amount));
+        
+        if (message != null) {
+            recipient.sendMessage(ChatColor.GRAY + "Message: " + message);
+        }
+    }
+}
+```
+
+**Usage examples:**
+- `/economy pay Bob 100` - Send $100 to Bob
+- `/economy pay Bob 50 -s` - Send $50 anonymously
+- `/economy pay Bob 25 -m "For the diamonds"` - Send $25 with a message
+- `/economy pay Bob 75 --silent -m "Secret gift"` - Anonymous with message
+
+## Next Steps
+
+- [Basic Commands](/examples/basic-commands) - Review the fundamentals
+- [Subcommands](/examples/subcommands) - Organize complex command structures
+- [Custom Types](/examples/custom-types) - Build your own argument providers

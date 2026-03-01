@@ -1,0 +1,371 @@
+---
+title: Parameter Annotations
+description: Learn about parameter annotations for customizing command argument behavior
+---
+
+## Overview
+
+Parameter annotations control how command arguments are parsed, validated, and injected into your command methods. They are applied to method parameters to customize their behavior.
+
+## Sender Annotations
+
+### @Sender
+
+Marks a parameter as the command sender. This parameter receives the user executing the command and does not consume arguments from the input.
+
+**Source:** `me/vaperion/blade/annotation/parameter/Sender.java:22-23`
+
+```java
+@Command("heal")
+public void healCommand(@Sender Player player) {
+    player.setHealth(20.0);
+}
+```
+
+**Type Support:**
+
+Blade supports custom sender types through `SenderProvider`:
+
+```java
+Blade.forPlatform(platform)
+    .bind(binder -> {
+        binder.bindSender(Player.class, (context, sender) -> {
+            if (sender.getHandle() instanceof Player) {
+                return (Player) sender.getHandle();
+            }
+            throw BladeParseError.fatal("This command is player-only!");
+        });
+    })
+    .build();
+```
+
+<Note>
+The `@Sender` parameter must be the first parameter in the method. Only one sender parameter is allowed per command.
+</Note>
+
+## Naming and Display
+
+### @Name
+
+Sets a custom name for a parameter, used in usage messages and error displays.
+
+**Source:** `me/vaperion/blade/annotation/parameter/Name.java:26-34`
+
+**Without @Name:**
+```java
+@Command("give")
+public void giveCommand(@Sender Player player, String arg0, int arg1) {
+    // Usage: /give <arg0> <arg1>
+}
+```
+
+**With @Name:**
+```java
+@Command("give")
+public void giveCommand(@Sender Player player, 
+                        @Name("item") String item,
+                        @Name("amount") int amount) {
+    // Usage: /give <item> <amount>
+}
+```
+
+<Tip>
+If you compile with the `-parameters` flag, Java preserves parameter names and `@Name` becomes optional. Most modern IDEs and build tools enable this by default.
+</Tip>
+
+**Compiler Configuration:**
+
+```xml
+<!-- Maven -->
+<plugin>
+    <groupId>org.apache.maven.plugins</groupId>
+    <artifactId>maven-compiler-plugin</artifactId>
+    <configuration>
+        <compilerArgs>
+            <arg>-parameters</arg>
+        </compilerArgs>
+    </configuration>
+</plugin>
+```
+
+```gradle
+// Gradle
+tasks.withType(JavaCompile) {
+    options.compilerArgs << '-parameters'
+}
+```
+
+## Optional Parameters
+
+### @Opt
+
+Marks a parameter as optional with configurable default behavior.
+
+**Source:** `me/vaperion/blade/annotation/parameter/Opt.java:19-77`
+
+<Tabs>
+  <Tab title="Empty Default">
+    Uses `null` for objects or default primitive values.
+    
+    ```java
+    @Command("teleport")
+    public void tpCommand(@Sender Player player, 
+                          @Opt Player target) {
+        if (target == null) {
+            player.sendMessage("Usage: /tp <player>");
+            return;
+        }
+        player.teleport(target.getLocation());
+    }
+    ```
+  </Tab>
+  
+  <Tab title="Sender as Default">
+    Uses the command sender as the default value (for player types).
+    
+    ```java
+    @Command("heal")
+    public void healCommand(@Sender Player sender, 
+                            @Opt(Type.SENDER) Player target) {
+        // If no target specified, heals sender
+        target.setHealth(20.0);
+    }
+    ```
+  </Tab>
+  
+  <Tab title="Custom Default">
+    Specifies a custom default value as a string.
+    
+    ```java
+    @Command("setspeed")
+    public void speedCommand(@Sender Player player,
+                             @Opt(value = Type.CUSTOM, custom = "1.0") float speed) {
+        player.setWalkSpeed(speed);
+    }
+    ```
+  </Tab>
+  
+  <Tab title="Error as Empty">
+    Treats parsing errors as if the argument was not provided.
+    
+    ```java
+    @Command("find")
+    public void findCommand(@Sender Player player,
+                           @Opt(treatErrorAsEmpty = true) Player target) {
+        if (target == null) {
+            player.sendMessage("Player not found or not specified");
+            return;
+        }
+        player.teleport(target);
+    }
+    ```
+  </Tab>
+</Tabs>
+
+**Type Reference:**
+```java
+public enum Type {
+    EMPTY_OR_CUSTOM,  // Automatic based on custom value
+    EMPTY,            // null or primitive default (0, false, etc.)
+    SENDER,           // Use command sender
+    CUSTOM            // Parse from custom() string
+}
+```
+
+## Parsing Modifiers
+
+### @Greedy
+
+Captures all remaining arguments as a single string.
+
+**Source:** `me/vaperion/blade/annotation/parameter/Greedy.java:15-16`
+
+```java
+@Command("broadcast")
+public void broadcastCommand(@Sender CommandSender sender, 
+                             @Greedy String message) {
+    // /broadcast Hello everyone! How are you?
+    // message = "Hello everyone! How are you?"
+    server.broadcastMessage(message);
+}
+```
+
+<Warning>
+`@Greedy` parameters must be the last parameter in the command (except for flags). They consume all remaining input.
+</Warning>
+
+**Common Pattern with @Quoted:**
+```java
+@Command("announce")
+@Quoted
+public void announceCommand(@Sender Player player,
+                            String title,
+                            @Greedy String message) {
+    // /announce "Event" This is a longer message
+    // title = "Event"
+    // message = "This is a longer message"
+}
+```
+
+### @Range
+
+Validates numeric parameters against minimum and maximum bounds.
+
+**Source:** `me/vaperion/blade/annotation/parameter/Range.java:15-33`
+
+```java
+@Command("setlevel")
+public void setLevelCommand(@Sender Player sender,
+                           Player target,
+                           @Range(min = 1, max = 100) int level) {
+    target.setLevel(level);
+}
+```
+
+**Properties:**
+- `min()` - Minimum value (inclusive), defaults to `Double.NaN` (no minimum)
+- `max()` - Maximum value (inclusive), defaults to `Double.NaN` (no maximum)
+
+**Examples:**
+```java
+// Only minimum
+@Range(min = 0) int amount
+
+// Only maximum
+@Range(max = 100) int percentage
+
+// Both bounds
+@Range(min = 1.0, max = 10.0) double multiplier
+
+// No bounds (pointless but valid)
+@Range int value
+```
+
+## Custom Data
+
+### @Data
+
+Passes custom string data to argument providers for per-parameter customization.
+
+**Source:** `me/vaperion/blade/annotation/parameter/Data.java:21-29`
+
+```java
+@Command("spawmob")
+public void spawnMobCommand(@Sender Player player,
+                            @Data({"HOSTILE", "PASSIVE"}) EntityType type) {
+    // Data array is passed to EntityType's ArgumentProvider
+    // Provider can use this to filter suggestions
+}
+```
+
+**In ArgumentProvider:**
+```java
+public class EntityTypeProvider implements ArgumentProvider<EntityType> {
+    @Override
+    public EntityType provide(Context ctx, InputArgument arg) {
+        // Access via arg.parameter().data()
+        List<String> data = arg.parameter().data();
+        return EntityType.valueOf(arg.requireValue().toUpperCase());
+    }
+    
+    @Override
+    public void suggest(Context ctx, InputArgument arg, SuggestionsBuilder suggestions) {
+        List<String> data = arg.parameter().data();
+        if (data.contains("HOSTILE")) {
+            suggestions.suggest("ZOMBIE");
+            suggestions.suggest("SKELETON");
+        }
+        if (data.contains("PASSIVE")) {
+            suggestions.suggest("COW");
+            suggestions.suggest("SHEEP");
+        }
+    }
+}
+```
+
+<Tip>
+For type-safe metadata, consider creating custom annotations marked with `@Forwarded` instead of using `@Data`.
+</Tip>
+
+## Flags
+
+### @Flag
+
+Defines optional flag parameters with short and long names.
+
+**Source:** `me/vaperion/blade/annotation/parameter/Flag.java:15-45`
+
+```java
+@Command("teleport")
+public void teleportCommand(@Sender Player player,
+                           Player target,
+                           @Flag(value = 's', longName = "silent") boolean silent) {
+    player.teleport(target.getLocation());
+    if (!silent) {
+        player.sendMessage("Teleported!");
+    }
+}
+```
+
+**Usage Examples:**
+```bash
+/teleport Steve -s              # Short flag
+/teleport Steve --silent        # Long flag
+/teleport Steve                 # No flag (silent = false)
+```
+
+**Flag Properties:**
+```java
+@Flag(
+    value = 'f',                    // Short name: -f
+    longName = "force",             // Long name: --force
+    description = "Force operation", // Help text
+    required = false                 // Whether flag is mandatory
+)
+boolean force
+```
+
+**Value Flags:**
+```java
+@Command("search")
+public void searchCommand(@Sender Player player,
+                         @Greedy String query,
+                         @Flag(value = 'r', longName = "radius") 
+                         @Opt(value = Type.CUSTOM, custom = "10") 
+                         int radius) {
+    // /search -r 50 diamond ore
+    // /search --radius 100 diamond ore
+    // /search diamond ore (radius = 10)
+}
+```
+
+## Combining Annotations
+
+Parameter annotations can be combined for complex behaviors:
+
+```java
+@Command("give")
+public void giveCommand(
+    @Sender Player sender,
+    @Name("target") @Opt(Type.SENDER) Player target,
+    @Name("item") String item,
+    @Name("amount") @Range(min = 1, max = 64) @Opt(value = Type.CUSTOM, custom = "1") int amount,
+    @Flag(value = 's', longName = "silent", description = "No message") boolean silent
+) {
+    // /give -s Steve diamond 32
+    // /give --silent diamond_sword (gives 1 to sender)
+    // /give Bob emerald 10
+}
+```
+
+## Reference
+
+**Parameter Processing:**
+```
+me/vaperion/blade/command/BladeCommand.java:132-198
+```
+
+**Name Resolution:**
+```
+me/vaperion/blade/command/BladeCommand.java:160-164
+```

@@ -1,0 +1,422 @@
+---
+title: 'Subcommands'
+description: 'Organize related commands using subcommand structures'
+---
+
+Subcommands help you organize related functionality under a common base command. Instead of having `/warp`, `/warpset`, `/warpdelete`, you can have `/warp create`, `/warp delete`, `/warp list`.
+
+## Understanding Subcommands
+
+Blade supports two ways to create subcommands:
+
+1. **Inline method syntax** - Define the full command path in `@Command`
+2. **Class-level prefix** - Use `@Command` on a class to prefix all methods
+
+## Inline Subcommands
+
+The simplest way to create subcommands is to include the full path in the `@Command` annotation:
+
+```java
+public class WarpCommands {
+    @Command("warp list")
+    @Description("List all available warps")
+    public static void list(@Sender Player player) {
+        player.sendMessage("Available warps: spawn, shop, pvp");
+    }
+    
+    @Command("warp create")
+    @Description("Create a new warp at your location")
+    @Permission("warps.admin")
+    public static void create(
+        @Sender Player player,
+        @Name("name") String name
+    ) {
+        Location loc = player.getLocation();
+        // Save warp to database/config
+        player.sendMessage("Created warp: " + name);
+    }
+    
+    @Command("warp delete")
+    @Description("Delete an existing warp")
+    @Permission("warps.admin")
+    public static void delete(
+        @Sender Player player,
+        @Name("name") String name
+    ) {
+        // Remove warp from database/config
+        player.sendMessage("Deleted warp: " + name);
+    }
+    
+    @Command("warp")
+    @Description("Teleport to a warp")
+    public static void warp(
+        @Sender Player player,
+        @Name("name") String name
+    ) {
+        // Load warp location and teleport
+        player.sendMessage("Teleported to warp: " + name);
+    }
+}
+```
+
+**Command structure:**
+- `/warp list` - Lists warps
+- `/warp create <name>` - Creates a warp
+- `/warp delete <name>` - Deletes a warp
+- `/warp <name>` - Teleports to a warp
+
+## Class-Level Command Prefix
+
+Use `@Command` on the class itself to prefix all methods:
+
+```java
+@Command("warp")
+public class WarpCommands {
+    
+    @Command("list")
+    @Description("List all available warps")
+    public static void list(@Sender Player player) {
+        player.sendMessage("Available warps: spawn, shop, pvp");
+    }
+    
+    @Command("create")
+    @Description("Create a new warp at your location")
+    @Permission("warps.admin")
+    public static void create(
+        @Sender Player player,
+        @Name("name") String name
+    ) {
+        Location loc = player.getLocation();
+        player.sendMessage("Created warp: " + name);
+    }
+    
+    @Command("delete")
+    @Description("Delete an existing warp")
+    @Permission("warps.admin")
+    public static void delete(
+        @Sender Player player,
+        @Name("name") String name
+    ) {
+        player.sendMessage("Deleted warp: " + name);
+    }
+    
+    @Command // Empty @Command means this is the base command
+    @Description("Teleport to a warp")
+    public static void warp(
+        @Sender Player player,
+        @Name("name") String name
+    ) {
+        player.sendMessage("Teleported to warp: " + name);
+    }
+}
+```
+
+**Result:** Identical to the inline approach, but more organized!
+
+**How it works:**
+- `@Command("warp")` on the class acts as a prefix
+- Each method's `@Command` is appended to the prefix
+- Empty `@Command` on a method uses just the class prefix
+
+## Multi-Level Subcommands
+
+Create deep command hierarchies:
+
+```java
+@Command("admin")
+public class AdminCommands {
+    
+    @Command("player ban")
+    @Description("Ban a player from the server")
+    @Permission("admin.player.ban")
+    public static void ban(
+        @Sender CommandSender sender,
+        @Name("player") String playerName,
+        @Name("reason") @Greedy String reason
+    ) {
+        // Ban logic
+        sender.sendMessage("Banned " + playerName + " for: " + reason);
+    }
+    
+    @Command("player kick")
+    @Description("Kick a player from the server")
+    @Permission("admin.player.kick")
+    public static void kick(
+        @Sender CommandSender sender,
+        @Name("player") Player player,
+        @Name("reason") @Greedy @Opt String reason
+    ) {
+        String kickReason = reason != null ? reason : "Kicked by an administrator";
+        player.kickPlayer(kickReason);
+        sender.sendMessage("Kicked " + player.getName());
+    }
+    
+    @Command("server restart")
+    @Description("Restart the server")
+    @Permission("admin.server.restart")
+    public static void restart(
+        @Sender CommandSender sender,
+        @Name("delay") @Opt @Range(min = 0, max = 300) int delay
+    ) {
+        int seconds = delay != null ? delay : 30;
+        sender.sendMessage("Server will restart in " + seconds + " seconds");
+        // Schedule restart
+    }
+    
+    @Command("server maintenance")
+    @Description("Toggle maintenance mode")
+    @Permission("admin.server.maintenance")
+    public static void maintenance(
+        @Sender CommandSender sender,
+        @Flag(value = 'o', description = "Turn on") boolean on,
+        @Flag(value = 'f', description = "Turn off") boolean off
+    ) {
+        if (on) {
+            sender.sendMessage("Maintenance mode enabled");
+        } else if (off) {
+            sender.sendMessage("Maintenance mode disabled");
+        } else {
+            sender.sendMessage("Usage: /admin server maintenance -o|-f");
+        }
+    }
+}
+```
+
+**Command structure:**
+- `/admin player ban <player> <reason>` - Ban a player
+- `/admin player kick <player> [reason]` - Kick a player
+- `/admin server restart [delay]` - Restart server
+- `/admin server maintenance -o|-f` - Toggle maintenance
+
+## Organizing by Feature
+
+Group related functionality into separate classes:
+
+<Steps>
+  <Step title="Economy Base Commands">
+    ```java
+    @Command("economy")
+    public class EconomyCommands {
+        
+        @Command("balance")
+        @Description("Check your balance")
+        public static void balance(
+            @Sender Player player,
+            @Name("target") @Opt(Opt.Type.SENDER) Player target
+        ) {
+            double balance = economy.getBalance(target);
+            
+            if (target == player) {
+                player.sendMessage("Your balance: $" + balance);
+            } else {
+                player.sendMessage(target.getName() + "'s balance: $" + balance);
+            }
+        }
+        
+        @Command("pay")
+        @Description("Send money to another player")
+        public static void pay(
+            @Sender Player sender,
+            @Name("player") Player recipient,
+            @Name("amount") @Range(min = 0.01) double amount
+        ) {
+            if (economy.getBalance(sender) < amount) {
+                sender.sendMessage("Insufficient funds!");
+                return;
+            }
+            
+            economy.withdraw(sender, amount);
+            economy.deposit(recipient, amount);
+            
+            sender.sendMessage("Sent $" + amount + " to " + recipient.getName());
+            recipient.sendMessage("Received $" + amount + " from " + sender.getName());
+        }
+    }
+    ```
+  </Step>
+
+  <Step title="Economy Admin Commands">
+    ```java
+    @Command("economy admin")
+    public class EconomyAdminCommands {
+        
+        @Command("give")
+        @Description("Give money to a player")
+        @Permission("economy.admin.give")
+        public static void give(
+            @Sender CommandSender sender,
+            @Name("player") Player target,
+            @Name("amount") @Range(min = 0.01) double amount
+        ) {
+            economy.deposit(target, amount);
+            sender.sendMessage("Gave $" + amount + " to " + target.getName());
+            target.sendMessage("You received $" + amount);
+        }
+        
+        @Command("take")
+        @Description("Take money from a player")
+        @Permission("economy.admin.take")
+        public static void take(
+            @Sender CommandSender sender,
+            @Name("player") Player target,
+            @Name("amount") @Range(min = 0.01) double amount
+        ) {
+            economy.withdraw(target, amount);
+            sender.sendMessage("Took $" + amount + " from " + target.getName());
+            target.sendMessage("$" + amount + " was deducted from your account");
+        }
+        
+        @Command("set")
+        @Description("Set a player's balance")
+        @Permission("economy.admin.set")
+        public static void set(
+            @Sender CommandSender sender,
+            @Name("player") Player target,
+            @Name("amount") @Range(min = 0) double amount
+        ) {
+            economy.setBalance(target, amount);
+            sender.sendMessage("Set " + target.getName() + "'s balance to $" + amount);
+        }
+    }
+    ```
+  </Step>
+</Steps>
+
+**Final command structure:**
+- `/economy balance [player]` - Check balance
+- `/economy pay <player> <amount>` - Send money
+- `/economy admin give <player> <amount>` - Give money (admin)
+- `/economy admin take <player> <amount>` - Take money (admin)
+- `/economy admin set <player> <amount>` - Set balance (admin)
+
+## Command Aliases
+
+Support multiple command names:
+
+```java
+@Command({"warp", "warps", "w"})
+public class WarpCommands {
+    
+    @Command({"list", "ls", "all"})
+    @Description("List all available warps")
+    public static void list(@Sender Player player) {
+        player.sendMessage("Available warps: spawn, shop, pvp");
+    }
+    
+    @Command({"create", "add", "new"})
+    @Description("Create a new warp")
+    @Permission("warps.admin")
+    public static void create(
+        @Sender Player player,
+        @Name("name") String name
+    ) {
+        player.sendMessage("Created warp: " + name);
+    }
+}
+```
+
+**All these work:**
+- `/warp list`, `/warps list`, `/w list`
+- `/warp ls`, `/w ls`
+- `/warp create home`, `/w add home`, `/warps new home`
+
+## Base Command with Subcommands
+
+Create a default action when the base command is used alone:
+
+```java
+@Command("shop")
+public class ShopCommands {
+    
+    @Command // This handles /shop with no subcommand
+    @Description("Open the shop GUI")
+    public static void openShop(@Sender Player player) {
+        // Open shop inventory GUI
+        player.sendMessage("Opening shop...");
+    }
+    
+    @Command("buy")
+    @Description("Buy an item from the shop")
+    public static void buy(
+        @Sender Player player,
+        @Name("item") String item,
+        @Name("amount") @Range(min = 1, max = 64) int amount
+    ) {
+        player.sendMessage("Purchased " + amount + "x " + item);
+    }
+    
+    @Command("sell")
+    @Description("Sell items to the shop")
+    public static void sell(
+        @Sender Player player,
+        @Flag(value = 'a', description = "Sell all") boolean all
+    ) {
+        if (all) {
+            player.sendMessage("Sold all items in inventory");
+        } else {
+            player.sendMessage("Sold item in hand");
+        }
+    }
+}
+```
+
+**Usage:**
+- `/shop` - Opens GUI
+- `/shop buy diamond 10` - Buys 10 diamonds
+- `/shop sell -a` - Sells all items
+
+## Best Practices
+
+### 1. Keep Related Commands Together
+
+```java
+// Good: All warp commands in one class
+@Command("warp")
+public class WarpCommands { }
+
+// Bad: Commands scattered across multiple files
+public class WarpCommand { }
+public class WarpCreateCommand { }
+public class WarpDeleteCommand { }
+```
+
+### 2. Use Consistent Naming
+
+```java
+// Good: Clear, consistent verbs
+@Command("create")  // /warp create
+@Command("delete")  // /warp delete
+@Command("list")    // /warp list
+
+// Avoid: Inconsistent naming
+@Command("make")    // /warp make
+@Command("remove")  // /warp remove
+@Command("show")    // /warp show
+```
+
+### 3. Organize by Permission Level
+
+```java
+@Command("server")
+public class ServerCommands {
+    // Public commands first
+    @Command("info")
+    public static void info(...) { }
+    
+    // Moderator commands
+    @Command("kick")
+    @Permission("server.mod")
+    public static void kick(...) { }
+    
+    // Admin commands last
+    @Command("restart")
+    @Permission("server.admin")
+    public static void restart(...) { }
+}
+```
+
+## Next Steps
+
+- [Basic Commands](/examples/basic-commands) - Learn the fundamentals
+- [Complex Commands](/examples/complex-commands) - Advanced features
+- [Custom Types](/examples/custom-types) - Create custom argument providers

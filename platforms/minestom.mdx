@@ -1,0 +1,170 @@
+---
+title: Minestom
+description: Setup and usage guide for Blade on Minestom
+---
+
+The Minestom platform provides Blade command framework support for Minestom servers.
+
+## Requirements
+
+- Java 21 or higher
+- Minestom server
+
+## Installation
+
+<Tabs>
+  <Tab title="Maven">
+    ```xml
+    <dependencies>
+        <dependency>
+            <groupId>io.github.vaperion.blade</groupId>
+            <artifactId>minestom</artifactId>
+            <version>VERSION</version>
+            <scope>provided</scope>
+        </dependency>
+    </dependencies>
+    ```
+  </Tab>
+  <Tab title="Gradle (Groovy)">
+    ```groovy
+    dependencies {
+        implementation 'io.github.vaperion.blade:minestom:VERSION'
+    }
+    ```
+  </Tab>
+  <Tab title="Gradle (Kotlin)">
+    ```kotlin
+    dependencies {
+        implementation("io.github.vaperion.blade:minestom:VERSION")
+    }
+    ```
+  </Tab>
+</Tabs>
+
+Replace `VERSION` with the latest version available on Maven Central.
+
+## Setup
+
+Initialize Blade during your server initialization using `BladeMinestomPlatform`. You'll need to provide both the `MinecraftServer` instance and a `PermissionChecker`:
+
+```java
+public class MyMinestomServer {
+    public static void main(String[] args) {
+        MinecraftServer minecraftServer = MinecraftServer.init();
+        
+        // Define your permission checker
+        PermissionChecker permissionChecker = (sender, permission) -> {
+            // Implement your permission logic here
+            // Return true if sender has permission, false otherwise
+            return sender.hasPermission(permission);
+        };
+        
+        Blade.forPlatform(new BladeMinestomPlatform(minecraftServer, permissionChecker))
+            .config(cfg -> {
+                cfg.commandQualifier("myserver"); // Optional
+                cfg.defaultPermissionMessage(
+                    Component.text("No permission!", NamedTextColor.RED)
+                );
+            })
+            .bind(binder -> {
+                // Optional: Register custom argument providers
+                binder.bind(Player.class, new MyCustomPlayerProvider());
+            })
+            .build()
+            // Register all commands in a package (including sub-packages):
+            .registerPackage(MyMinestomServer.class, "com.example.commands")
+            // or register them individually:
+            .register(ExampleCommand.class)
+        ;
+        
+        minecraftServer.start("0.0.0.0", 25565);
+    }
+}
+```
+
+## Features
+
+### Custom Permission System
+
+Minestom requires you to provide a `PermissionChecker` implementation. This gives you full control over how permissions are handled:
+
+```java
+PermissionChecker permissionChecker = (sender, permission) -> {
+    if (sender instanceof Player player) {
+        // Check player permissions using your system
+        return yourPermissionSystem.hasPermission(player, permission);
+    } else if (sender instanceof ConsoleSender) {
+        // Console has all permissions
+        return true;
+    }
+    return false;
+};
+```
+
+### Built-in Argument Types
+
+The Minestom platform includes a built-in argument provider for:
+
+- `Player` - Online player lookup
+- `ConsoleSender` - Console sender type
+
+### Adventure Components
+
+Minestom uses Kyori Adventure's `Component` system for all text and messages:
+
+```java
+cfg.defaultPermissionMessage(
+    Component.text("You don't have permission!", NamedTextColor.RED)
+);
+```
+
+### Example Command
+
+```java
+public class GamemodeCommand {
+    @Command("gamemode")
+    @Description("Change gamemode")
+    @Permission("myserver.gamemode")
+    public void gamemode(
+        @Sender Player sender,
+        @Name("mode") GameMode mode,
+        @Name("target") @Opt(Opt.Type.SENDER) Player target
+    ) {
+        target.setGameMode(mode);
+        sender.sendMessage(
+            Component.text("Set " + target.getUsername() + "'s gamemode to " + mode.name(),
+                NamedTextColor.GREEN)
+        );
+    }
+}
+```
+
+### Example with Custom Argument
+
+```java
+public class TeleportCommand {
+    @Command("tp")
+    @Description("Teleport to coordinates or a player")
+    @Permission("myserver.teleport")
+    public void teleport(
+        @Sender Player sender,
+        @Name("target") Player target
+    ) {
+        Pos targetPos = target.getPosition();
+        sender.teleport(targetPos);
+        
+        sender.sendMessage(
+            Component.text("Teleported to " + target.getUsername(),
+                NamedTextColor.GREEN)
+        );
+    }
+}
+```
+
+## Next Steps
+
+- Learn about [creating commands](/core-concepts/commands)
+- Explore [argument providers](/api/argument-provider)
+- Understand [permissions](/advanced/permissions)
+- Read about [Adventure Components](https://docs.advntr.dev/)
+- Check out [Minestom documentation](https://minestom.net/)

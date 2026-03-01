@@ -1,0 +1,258 @@
+---
+title: Command Annotations
+description: Overview of all command annotations for controlling command behavior
+---
+
+## Overview
+
+Blade provides a rich set of annotations to control command behavior, permissions, visibility, and execution. These annotations are applied to command methods to customize their functionality.
+
+## Core Annotations
+
+<Tabs>
+  <Tab title="@Description">
+    Sets the description displayed in help messages.
+    
+    ```java
+    @Command("heal")
+    @Description("Restore your health to full")
+    public void healCommand(@Sender Player player) {
+        player.setHealth(20.0);
+    }
+    ```
+    
+    **Source:** `me/vaperion/blade/annotation/command/Description.java:15-23`
+    
+    **Properties:**
+    - `value()` - The description string
+    
+    **Target:** `ElementType.METHOD`
+  </Tab>
+  
+  <Tab title="@Permission">
+    Restricts command execution based on permissions.
+    
+    ```java
+    @Command("ban")
+    @Permission("server.admin.ban")
+    public void banCommand(@Sender Player sender, Player target) {
+        target.ban();
+    }
+    ```
+    
+    **Source:** `me/vaperion/blade/annotation/command/Permission.java:15-46`
+    
+    **Properties:**
+    - `value()` - The required permission
+    - `message()` - Custom permission denial message
+    
+    **Special Values:**
+    - `"op"` - Requires sender to be an operator
+    - `"console"` - Requires sender to be console
+    - `"@predicateName"` - Uses a registered permission predicate
+    
+    **Custom Message Example:**
+    ```java
+    @Command("admin")
+    @Permission(value = "server.admin", message = "You must be an admin!")
+    public void adminCommand(@Sender Player player) {
+        // Admin only
+    }
+    ```
+    
+    **Permission Predicates:**
+    ```java
+    Blade.forPlatform(platform)
+        .permission(p -> {
+            p.predicate("vip", (context, sender) -> {
+                return hasVipStatus(sender);
+            });
+        })
+        .build();
+    
+    @Command("viproom")
+    @Permission("@vip")
+    public void vipCommand(@Sender Player player) {
+        // VIP only
+    }
+    ```
+  </Tab>
+  
+  <Tab title="@Hidden">
+    Hides the command from help messages and tab completion.
+    
+    ```java
+    @Command("debug")
+    @Hidden
+    @Permission("op")
+    public void debugCommand(@Sender CommandSender sender) {
+        // Hidden debug command
+    }
+    ```
+    
+    **Source:** `me/vaperion/blade/annotation/command/Hidden.java:15-16`
+    
+    **Behavior:**
+    - Does not appear in help messages
+    - Cannot be tab-completed
+    - Shows "unknown command" message if executed without permission
+    
+    <Note>
+    Hidden commands are useful for debug commands or administrative tools that shouldn't be advertised to regular users.
+    </Note>
+  </Tab>
+  
+  <Tab title="@Async">
+    Executes the command asynchronously off the main thread.
+    
+    ```java
+    @Command("lookup")
+    @Async
+    public void lookupCommand(@Sender Player player, String username) {
+        // Performs database lookup without blocking main thread
+        User user = database.findUser(username);
+        player.sendMessage("Found: " + user.getName());
+    }
+    ```
+    
+    **Source:** `me/vaperion/blade/annotation/command/Async.java:13-14`
+    
+    <Warning>
+    Be careful when modifying game state from async commands. Most platform APIs are not thread-safe and require synchronization back to the main thread.
+    </Warning>
+    
+    **Thread-Safe Pattern:**
+    ```java
+    @Command("heavywork")
+    @Async
+    public void heavyWorkCommand(@Sender Player player) {
+        // Heavy computation off main thread
+        Result result = performHeavyCalculation();
+        
+        // Sync back to main thread for game interaction
+        Bukkit.getScheduler().runTask(plugin, () -> {
+            player.sendMessage("Result: " + result);
+        });
+    }
+    ```
+  </Tab>
+</Tabs>
+
+## Usage Annotations
+
+<Tabs>
+  <Tab title="@Usage">
+    Provides a custom usage message instead of the auto-generated one.
+    
+    ```java
+    @Command("tp")
+    @Usage("/tp <player> or /tp <x> <y> <z>")
+    public void teleportCommand(@Sender Player player, @Greedy String args) {
+        // Custom parsing logic
+    }
+    ```
+    
+    **Source:** `me/vaperion/blade/annotation/command/Usage.java:17-20`
+    
+    <Tip>
+    If not specified, Blade automatically generates a usage message based on the command's parameters.
+    </Tip>
+  </Tab>
+  
+  <Tab title="@Help">
+    Marks a method as a help command that displays available subcommands.
+    
+    ```java
+    @Command("game")
+    @Help
+    public void gameHelp(@Sender Player player) {
+        // Method body is ignored - Blade generates help automatically
+    }
+    ```
+    
+    **Source:** `me/vaperion/blade/annotation/command/Help.java:15-16`
+    
+    **Behavior:**
+    - Method body is completely ignored
+    - Blade automatically generates and displays help for subcommands
+    - Adds a greedy string parameter for help queries
+    
+    **Implementation:**
+    ```
+me/vaperion/blade/command/BladeCommand.java:95-120
+    ```
+  </Tab>
+</Tabs>
+
+## Input Parsing Annotations
+
+### @Quoted
+
+Enables quote parsing for command arguments.
+
+**Source:** `me/vaperion/blade/annotation/command/Quoted.java:20-21`
+
+**Method-Level:**
+```java
+@Command("announce")
+@Quoted
+public void announceCommand(@Sender Player player, String title, String message) {
+    // /announce "Server Event" "Join us for a special event!"
+    // title = "Server Event"
+    // message = "Join us for a special event!"
+}
+```
+
+**Parameter-Level:**
+```java
+@Command("setname")
+public void setNameCommand(@Sender Player player, Player target, @Quoted String name) {
+    // /setname Steve "The Builder"
+    // Only the 'name' parameter supports quotes
+}
+```
+
+<Note>
+Without `@Quoted`, arguments are split by spaces. With quotes, text within quotes is treated as a single argument.
+</Note>
+
+## Annotation Combinations
+
+Annotations can be combined for sophisticated command behavior:
+
+```java
+@Command({"sudo", "runas"})
+@Description("Execute a command as another player")
+@Permission(value = "server.admin.sudo", message = "Only admins can use sudo!")
+@Async
+@Quoted
+public void sudoCommand(@Sender Player admin, Player target, @Greedy String command) {
+    // Executes 'command' as if 'target' typed it
+    performAsyncSudoExecution(target, command);
+}
+```
+
+## Best Practices
+
+<Tip>
+1. Always provide `@Description` for user-facing commands
+2. Use `@Hidden` for debug/admin commands that shouldn't be advertised
+3. Apply `@Async` for database queries, file I/O, or network requests
+4. Combine `@Permission` with `@Hidden` for secret admin commands
+5. Use `@Quoted` sparingly - most users don't know about quote syntax
+</Tip>
+
+## Configuration in Builder
+
+Some annotation behaviors can be configured when building Blade:
+
+```java
+Blade blade = Blade.forPlatform(platform)
+    .config(cfg -> {
+        // Default permission denial message
+        cfg.defaultPermissionMessage("You don't have permission!");
+    })
+    .build();
+```
+
+**Reference:** `me/vaperion/blade/command/BladeCommand.java:91`

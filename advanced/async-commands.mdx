@@ -1,0 +1,325 @@
+---
+title: Async Command Execution
+description: Execute commands asynchronously using the @Async annotation
+---
+
+Blade supports asynchronous command execution, allowing you to run long-running operations without blocking the main server thread.
+
+## The @Async Annotation
+
+The `@Async` annotation marks a command for asynchronous execution:
+
+```java
+/**
+ * This annotation is used to indicate that a command should be executed asynchronously.
+ */
+@Retention(RetentionPolicy.RUNTIME)
+@Target(ElementType.METHOD)
+public @interface Async {
+}
+```
+
+## Basic Usage
+
+Simply add the `@Async` annotation to your command method:
+
+```java
+@Command("database")
+@Async
+public void databaseCommand(@Sender Player player, @Name("query") String query) {
+    // This runs on a separate thread
+    DatabaseResult result = database.query(query);
+    
+    player.sendMessage("Query returned " + result.size() + " rows");
+}
+```
+
+## When to Use Async
+
+Use `@Async` for operations that might block or take time:
+
+### Database Operations
+
+```java
+@Command("stats")
+@Async
+public void statsCommand(@Sender Player player, @Name("username") String username) {
+    // Database query - could take time
+    PlayerStats stats = database.getPlayerStats(username);
+    
+    if (stats == null) {
+        player.sendMessage("Player not found!");
+        return;
+    }
+    
+    player.sendMessage("Kills: " + stats.getKills());
+    player.sendMessage("Deaths: " + stats.getDeaths());
+}
+```
+
+### File I/O
+
+```java
+@Command("export")
+@Async
+public void exportCommand(@Sender Player player) {
+    player.sendMessage("Exporting data...");
+    
+    // File writing - I/O operation
+    try {
+        exportPlayerData(player.getUniqueId());
+        player.sendMessage("Export complete!");
+    } catch (IOException e) {
+        player.sendMessage("Export failed: " + e.getMessage());
+    }
+}
+```
+
+### HTTP Requests
+
+```java
+@Command("verify")
+@Async
+public void verifyCommand(@Sender Player player, @Name("code") String code) {
+    // HTTP request - network operation
+    try {
+        boolean valid = apiClient.verifyCode(code);
+        
+        if (valid) {
+            player.sendMessage("Code verified successfully!");
+        } else {
+            player.sendMessage("Invalid code!");
+        }
+    } catch (Exception e) {
+        player.sendMessage("Verification service unavailable");
+    }
+}
+```
+
+### Complex Calculations
+
+```java
+@Command("calculate")
+@Async
+public void calculateCommand(
+    @Sender Player player,
+    @Name("iterations") @Range(min = 1, max = 1000000) int iterations
+) {
+    player.sendMessage("Starting calculation...");
+    
+    // CPU-intensive operation
+    double result = performComplexCalculation(iterations);
+    
+    player.sendMessage("Result: " + result);
+}
+```
+
+## Thread Safety Considerations
+
+<Warning>
+When using `@Async`, your command executes on a **separate thread**, not the main server thread. You must be careful with thread safety.
+</Warning>
+
+### Safe Operations
+
+These operations are safe in async commands:
+
+```java
+@Command("lookup")
+@Async
+public void lookupCommand(@Sender Player player, @Name("username") String username) {
+    // ✓ Sending messages to players is thread-safe in most platforms
+    player.sendMessage("Looking up " + username + "...");
+    
+    // ✓ Database operations are designed for multi-threading
+    PlayerData data = database.getPlayerData(username);
+    
+    // ✓ HTTP requests are safe
+    String info = httpClient.get("https://api.example.com/player/" + username);
+    
+    player.sendMessage("Done!");
+}
+```
+
+### Unsafe Operations
+
+These operations are **NOT safe** and should be wrapped in a scheduler:
+
+```java
+@Command("unsafe-example")
+@Async
+public void unsafeExample(@Sender Player player) {
+    // ✗ WRONG: Modifying game state directly
+    player.setHealth(20.0); // Not thread-safe!
+    player.getInventory().clear(); // Not thread-safe!
+    player.teleport(location); // Not thread-safe!
+}
+```
+
+## Returning to Main Thread
+
+When you need to modify game state, use the platform's scheduler:
+
+### Bukkit/Paper/Spigot
+
+```java
+@Command("heal")
+@Async
+public void healCommand(@Sender Player player) {
+    // Do async work first
+    boolean hasPermission = database.hasVipPermission(player.getUniqueId());
+    
+    if (!hasPermission) {
+        player.sendMessage("You need VIP to use this!");
+        return;
+    }
+    
+    // Switch back to main thread for game modifications
+    Bukkit.getScheduler().runTask(plugin, () -> {
+        player.setHealth(20.0);
+        player.setFoodLevel(20);
+        player.sendMessage("You have been healed!");
+    });
+}
+```
+
+### Fabric
+
+```java
+@Command("heal")
+@Async
+public void healCommand(@Sender ServerPlayerEntity player) {
+    // Do async work
+    boolean hasPermission = checkPermissionAsync(player);
+    
+    if (!hasPermission) {
+        player.sendMessage(Text.literal("No permission!"));
+        return;
+    }
+    
+    // Switch to main thread
+    MinecraftServer server = player.getServer();
+    server.execute(() -> {
+        player.setHealth(20.0f);
+        player.sendMessage(Text.literal("Healed!"));
+    });
+}
+```
+
+### Velocity
+
+```java
+@Command("broadcast")
+@Async
+public void broadcastCommand(@Sender Player player, @Name("message") @Greedy String message) {
+    // Do async work
+    String filtered = profanityFilter.filter(message);
+    
+    // Switch to main thread
+    proxyServer.getScheduler()
+        .buildTask(plugin, () -> {
+            proxyServer.getAllPlayers().forEach(p -> 
+                p.sendMessage(Component.text(filtered))
+            );
+        })
+        .schedule();
+}
+```
+
+## Error Handling
+
+Always handle exceptions in async commands:
+
+```java
+@Command("api-call")
+@Async
+public void apiCallCommand(@Sender Player player, @Name("endpoint") String endpoint) {
+    try {
+        player.sendMessage("Calling API...");
+        
+        String response = httpClient.get(endpoint);
+        player.sendMessage("Response: " + response);
+        
+    } catch (IOException e) {
+        player.sendMessage("Network error: " + e.getMessage());
+        logger.error("API call failed", e);
+        
+    } catch (Exception e) {
+        player.sendMessage("An error occurred!");
+        logger.error("Unexpected error in API call", e);
+    }
+}
+```
+
+## Combining with Other Annotations
+
+You can combine `@Async` with other annotations:
+
+```java
+@Command("admin database")
+@Permission("myplugin.admin.database")
+@Description("Query the database")
+@Async
+public void adminDatabaseCommand(
+    @Sender Player player,
+    @Name("query") @Greedy String query
+) {
+    // Permission checked BEFORE async execution
+    // Command runs asynchronously
+    
+    try {
+        List<Map<String, Object>> results = database.executeQuery(query);
+        player.sendMessage("Query returned " + results.size() + " rows");
+    } catch (SQLException e) {
+        player.sendMessage("Query failed: " + e.getMessage());
+    }
+}
+```
+
+## Best Practices
+
+1. **Only use for I/O or long operations**: Don't use `@Async` for simple commands
+2. **Handle exceptions**: Always catch and handle potential errors
+3. **Be thread-safe**: Don't modify game state directly from async threads
+4. **Use schedulers**: Return to the main thread when you need to modify game state
+5. **Send progress updates**: Let users know the command is working
+6. **Set timeouts**: Don't let async operations run forever
+
+## Example: Complete Async Command
+
+Here's a complete example showing best practices:
+
+```java
+@Command("backup")
+@Permission("myplugin.admin.backup")
+@Async
+public void backupCommand(@Sender CommandSender sender) {
+    sender.sendMessage("Starting backup...");
+    
+    try {
+        // Async file I/O
+        long startTime = System.currentTimeMillis();
+        File backup = backupManager.createBackup();
+        long duration = System.currentTimeMillis() - startTime;
+        
+        // Upload to cloud storage (network I/O)
+        sender.sendMessage("Uploading to cloud storage...");
+        String url = cloudStorage.upload(backup);
+        
+        // Success message
+        sender.sendMessage("Backup complete! (" + duration + "ms)");
+        sender.sendMessage("URL: " + url);
+        
+        // Clean up old backups
+        backupManager.cleanOldBackups();
+        
+    } catch (IOException e) {
+        sender.sendMessage("Backup failed: " + e.getMessage());
+        logger.error("Backup operation failed", e);
+        
+    } catch (Exception e) {
+        sender.sendMessage("An unexpected error occurred!");
+        logger.error("Unexpected error during backup", e);
+    }
+}
+```

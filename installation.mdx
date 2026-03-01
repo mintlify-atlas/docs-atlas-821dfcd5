@@ -1,0 +1,209 @@
+---
+title: Installation
+description: Add Blade to your Maven or Gradle project
+---
+
+Blade is published to Maven Central, making it easy to add to your project using Maven or Gradle.
+
+## Prerequisites
+
+- Java 8 or higher (some platforms require Java 17 or 21)
+- Maven or Gradle build tool
+- A supported platform (Bukkit, Paper, Fabric, Velocity, Minestom, or Hytale)
+
+<Note>
+  Blade is now published under the group ID `io.github.vaperion.blade` (changed from `com.github.vaperion.blade`). Make sure to use the new group ID when adding the dependency.
+</Note>
+
+## Choose Your Platform
+
+Blade provides different artifacts for each platform. Select the one that matches your environment:
+
+| Platform | Artifact | Requirements |
+|----------|----------|-------------|
+| Bukkit | `bukkit` | Java 8+ |
+| Paper (Modern) | `paper` | Minecraft 1.13+, Java 21+ |
+| Paper (Legacy) | `paper-legacy` | Minecraft 1.13+, Java 17-21 |
+| Fabric | `fabric` | Fabric mod loader |
+| Velocity | `velocity` | Velocity proxy |
+| Minestom | `minestom` | Minestom server |
+| Hytale | `hytale` | Hytale server |
+
+<Warning>
+  **Paper Users**: The Paper artifact is split into two versions. Use `paper` for Minecraft 1.20.6+ (Java 21+) and `paper-legacy` for older versions or Java 17-21. For Minecraft versions below 1.13 or Java below 17, use the `bukkit` artifact instead.
+</Warning>
+
+## Installation
+
+### Maven
+
+Add Blade as a dependency in your `pom.xml`:
+
+<CodeGroup>
+```xml Bukkit
+<dependencies>
+    <dependency>
+        <groupId>io.github.vaperion.blade</groupId>
+        <artifactId>bukkit</artifactId>
+        <version>1.0.23</version>
+        <scope>provided</scope>
+    </dependency>
+</dependencies>
+```
+
+```xml Paper (Modern)
+<dependencies>
+    <dependency>
+        <groupId>io.github.vaperion.blade</groupId>
+        <artifactId>paper</artifactId>
+        <version>1.0.23</version>
+        <scope>provided</scope>
+    </dependency>
+</dependencies>
+```
+
+```xml Paper (Legacy)
+<dependencies>
+    <dependency>
+        <groupId>io.github.vaperion.blade</groupId>
+        <artifactId>paper-legacy</artifactId>
+        <version>1.0.23</version>
+        <scope>provided</scope>
+    </dependency>
+</dependencies>
+```
+
+```xml Fabric
+<dependencies>
+    <dependency>
+        <groupId>io.github.vaperion.blade</groupId>
+        <artifactId>fabric</artifactId>
+        <version>1.0.23</version>
+    </dependency>
+</dependencies>
+```
+
+```xml Velocity
+<dependencies>
+    <dependency>
+        <groupId>io.github.vaperion.blade</groupId>
+        <artifactId>velocity</artifactId>
+        <version>1.0.23</version>
+        <scope>provided</scope>
+    </dependency>
+</dependencies>
+```
+</CodeGroup>
+
+### Gradle (Groovy DSL)
+
+Add Blade as a dependency in your `build.gradle`:
+
+<CodeGroup>
+```groovy Bukkit
+dependencies {
+    implementation 'io.github.vaperion.blade:bukkit:1.0.23'
+}
+```
+
+```groovy Paper (Modern)
+dependencies {
+    implementation 'io.github.vaperion.blade:paper:1.0.23'
+}
+```
+
+```groovy Paper (Legacy)
+dependencies {
+    implementation 'io.github.vaperion.blade:paper-legacy:1.0.23'
+}
+```
+
+```groovy Fabric
+dependencies {
+    include(modImplementation('io.github.vaperion.blade:fabric:1.0.23'))
+    include(modImplementation('io.github.vaperion.blade:brigadier:1.0.23'))
+    include(modImplementation('io.github.vaperion.blade:core:1.0.23'))
+}
+```
+
+```groovy Velocity
+dependencies {
+    implementation 'io.github.vaperion.blade:velocity:1.0.23'
+}
+```
+</CodeGroup>
+
+### Gradle (Kotlin DSL)
+
+Add Blade as a dependency in your `build.gradle.kts`:
+
+<CodeGroup>
+```kotlin Bukkit
+dependencies {
+    implementation("io.github.vaperion.blade:bukkit:1.0.23")
+}
+```
+
+```kotlin Paper (Modern)
+dependencies {
+    implementation("io.github.vaperion.blade:paper:1.0.23")
+}
+```
+
+```kotlin Paper (Legacy)
+dependencies {
+    implementation("io.github.vaperion.blade:paper-legacy:1.0.23")
+}
+```
+
+```kotlin Fabric
+dependencies {
+    include(modImplementation("io.github.vaperion.blade:fabric:1.0.23"))
+    include(modImplementation("io.github.vaperion.blade:brigadier:1.0.23"))
+    include(modImplementation("io.github.vaperion.blade:core:1.0.23"))
+}
+```
+
+```kotlin Velocity
+dependencies {
+    implementation("io.github.vaperion.blade:velocity:1.0.23")
+}
+```
+</CodeGroup>
+
+<Warning>
+  **Fabric Users**: You must use `include(modImplementation(...))` to add Blade as a jar-in-jar dependency. You'll need to include the `fabric`, `brigadier`, and `core` modules separately, as Fabric Loom doesn't resolve transitive dependencies automatically.
+</Warning>
+
+<Tip>
+  **Fabric Permissions**: Blade uses [Lucko's Fabric Permissions API](https://github.com/lucko/fabric-permissions-api) for permission checks on Fabric. Plugins such as LuckPerms provide support for this API.
+</Tip>
+
+## Verify Installation
+
+After adding the dependency, rebuild your project to verify that Blade is correctly installed:
+
+<CodeGroup>
+```bash Maven
+mvn clean install
+```
+
+```bash Gradle
+./gradlew build
+```
+</CodeGroup>
+
+If the build succeeds without errors, you're ready to start using Blade!
+
+## Next Steps
+
+Now that you have Blade installed, you can:
+
+<CardGroup cols={2}>
+  <Card title="Quick Start" icon="rocket" href="/quickstart">
+    Create your first Blade command
+  </Card>
+  <Card title="Core Concepts" icon="book" href="/core-concepts/commands">
+    Learn about the fundamental concepts
+  </Card>
+</CardGroup>

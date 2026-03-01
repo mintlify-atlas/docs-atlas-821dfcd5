@@ -1,0 +1,280 @@
+---
+title: Command Annotations
+description: Annotations for configuring commands in Blade
+---
+
+Command-level annotations control the behavior, visibility, and metadata of your commands.
+
+## @Command
+
+Marks a method or class as a command.
+
+<ParamField path="value" type="String[]" required>
+  Command labels (aliases). The first label is used as the primary name in help messages.
+</ParamField>
+
+### Usage Patterns
+
+- **Method-level**: Registers the method as a standalone command
+- **Class-level**: Acts as a prefix for all command methods within the class
+
+<CodeGroup>
+```java Method Command
+@Command("heal")
+public void healCommand(@Sender Player player) {
+    player.setHealth(20.0);
+    player.sendMessage("You have been healed!");
+}
+```
+
+```java Class Prefix
+@Command("admin")
+public class AdminCommands {
+    @Command("heal")
+    public void healCommand(@Sender Player player, @Name("target") Player target) {
+        target.setHealth(20.0);
+        player.sendMessage("Healed " + target.getName());
+    }
+    // Command path: /admin heal <target>
+}
+```
+
+```java Multiple Aliases
+@Command({"teleport", "tp"})
+public void teleportCommand(@Sender Player player) {
+    // Can be executed with /teleport or /tp
+}
+```
+</CodeGroup>
+
+---
+
+## @Description
+
+Sets the description displayed in help messages.
+
+<ParamField path="value" type="String">
+  The command description text.
+</ParamField>
+
+```java
+@Command("heal")
+@Description("Restore your health to full")
+public void healCommand(@Sender Player player) {
+    player.setHealth(20.0);
+}
+```
+
+---
+
+## @Permission
+
+Requires permission to execute the command.
+
+<ParamField path="value" type="String" default="">
+  The required permission node. Special values:
+  - `op` - Requires operator status
+  - `console` - Requires console sender
+  - `@predicate` - Custom permission predicate (prefix with `@`)
+</ParamField>
+
+<ParamField path="message" type="String" default="">
+  Custom message shown when permission is denied. Falls back to the global default if not set.
+</ParamField>
+
+<CodeGroup>
+```java Basic Permission
+@Command("ban")
+@Permission("server.admin.ban")
+public void banCommand(@Sender Player player, @Name("target") Player target) {
+    target.kickPlayer("You have been banned");
+}
+```
+
+```java Custom Message
+@Command("fly")
+@Permission(value = "server.fly", message = "You don't have permission to fly!")
+public void flyCommand(@Sender Player player) {
+    player.setAllowFlight(true);
+}
+```
+
+```java Special Values
+@Command("reload")
+@Permission("op")
+public void reloadCommand(@Sender CommandSender sender) {
+    // Only operators can execute
+}
+
+@Command("stop")
+@Permission("console")
+public void stopCommand(@Sender CommandSender sender) {
+    // Only console can execute
+}
+```
+
+```java Permission Predicate
+@Command("vip")
+@Permission("@hasVipRank")
+public void vipCommand(@Sender Player player) {
+    // Uses custom predicate registered with Blade
+}
+```
+</CodeGroup>
+
+---
+
+## @Hidden
+
+Hides a command from help messages and tab completion.
+
+```java
+@Command("secret")
+@Hidden
+public void secretCommand(@Sender Player player) {
+    // Won't appear in /help or tab completion
+    // Shows "unknown command" instead of "no permission"
+}
+```
+
+<Note>
+  Hidden commands still execute normally if the exact name is typed. They just don't appear in discovery features.
+</Note>
+
+---
+
+## @Async
+
+Executes the command asynchronously on a separate thread.
+
+```java
+@Command("lookup")
+@Async
+public void lookupCommand(@Sender Player player, @Name("username") String username) {
+    // This runs on a background thread
+    UUID uuid = fetchUUIDFromAPI(username);
+    player.sendMessage("UUID: " + uuid);
+}
+```
+
+<Warning>
+  Be careful when modifying game state from async commands. Use your platform's scheduler to sync back to the main thread when needed.
+</Warning>
+
+---
+
+## @Help
+
+Marks a command as a help command that displays generated help messages.
+
+```java
+@Command("help")
+@Help
+public void helpCommand() {
+    // Method body is ignored
+    // Blade generates and displays help automatically
+}
+
+@Command("admin")
+public class AdminCommands {
+    @Command("help")
+    @Help
+    public void help() {
+        // Shows help for all admin subcommands
+    }
+    
+    @Command("ban")
+    public void ban(@Sender Player player, @Name("target") Player target) {}
+}
+```
+
+---
+
+## @Usage
+
+Sets a custom usage message for the command.
+
+<ParamField path="value" type="String">
+  Custom usage text. If not specified, Blade generates usage automatically from parameters.
+</ParamField>
+
+```java
+@Command("teleport")
+@Usage("/teleport <player> [world]")
+public void teleportCommand(
+    @Sender Player sender,
+    @Name("player") Player target,
+    @Name("world") @Opt World world
+) {
+    // Custom usage overrides auto-generated format
+}
+```
+
+---
+
+## @ExtraUsage
+
+Appends additional text to the end of the generated usage message.
+
+<ParamField path="value" type="String">
+  Text to append to the usage message.
+</ParamField>
+
+```java
+@Command("spawn")
+@ExtraUsage("Use -f to force teleport")
+public void spawnCommand(@Sender Player player, @Flag('f') boolean force) {
+    // Usage: /spawn [-f] Use -f to force teleport
+}
+```
+
+---
+
+## @MainLabel
+
+Sets the main label displayed in usage messages and help.
+
+<ParamField path="value" type="String">
+  The label to use. If not set, the first alias from @Command is used.
+</ParamField>
+
+```java
+@Command({"tp", "teleport", "warp"})
+@MainLabel("teleport")
+public void teleportCommand(@Sender Player player) {
+    // Usage messages show "/teleport" instead of "/tp"
+}
+```
+
+---
+
+## @Quoted
+
+Enables quote parsing for command arguments.
+
+<CodeGroup>
+```java Command-Level
+@Command("say")
+@Quoted
+public void sayCommand(@Sender Player player, @Name("message") String message) {
+    // /say "hello world" -> message = "hello world"
+    // /say hello world -> message = "hello"
+    player.sendMessage(message);
+}
+```
+
+```java Parameter-Level
+@Command("nick")
+public void nickCommand(
+    @Sender Player player,
+    @Name("nickname") @Quoted String nickname
+) {
+    // Only the nickname parameter supports quotes
+    // /nick "The Pro" -> nickname = "The Pro"
+}
+```
+</CodeGroup>
+
+<Note>
+  When applied to a method, all parameters support quote parsing. When applied to a parameter, only that parameter supports quotes.
+</Note>

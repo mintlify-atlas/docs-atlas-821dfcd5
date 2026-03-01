@@ -1,0 +1,439 @@
+---
+title: Providers
+description: Learn about ArgumentProvider and SenderProvider for custom type parsing
+---
+
+## Overview
+
+Providers are the backbone of Blade's type system. They handle converting string arguments into typed objects and generating tab completion suggestions. Blade has two types of providers:
+
+- **ArgumentProvider** - Converts command arguments to custom types
+- **SenderProvider** - Converts the command sender to custom types
+
+## ArgumentProvider
+
+An `ArgumentProvider` converts string input into a specific type and provides tab completion suggestions.
+
+**Source:** `me/vaperion/blade/argument/ArgumentProvider.java:22-102`
+
+### Interface Definition
+
+```java
+public interface ArgumentProvider<T> {
+    @Nullable
+    T provide(@NotNull Context ctx, @NotNull InputArgument arg) throws BladeParseError;
+    
+    default void suggest(@NotNull Context ctx,
+                        @NotNull InputArgument arg,
+                        @NotNull SuggestionsBuilder suggestions) throws BladeParseError {
+    }
+    
+    default void suggestRich(@NotNull Context ctx,
+                            @NotNull InputArgument arg,
+                            @NotNull RichSuggestionsBuilder suggestions) throws BladeParseError {
+        suggest(ctx, arg, suggestions.legacyView());
+    }
+    
+    @Nullable
+    default String defaultArgName(@NotNull AnnotatedElement element) {
+        return null;
+    }
+    
+    default boolean alwaysParseQuotes() {
+        return false;
+    }
+    
+    default boolean handlesNullInputArguments() {
+        return false;
+    }
+}
+```
+
+### Creating a Simple Provider
+
+Here's a basic ArgumentProvider for parsing integers:
+
+**Source:** `me/vaperion/blade/argument/impl/IntArgument.java:9-27`
+
+```java
+public class IntArgument implements ArgumentProvider<Integer> {
+    @Override
+    public Integer provide(@NotNull Context ctx, @NotNull InputArgument arg) 
+            throws BladeParseError {
+        int input;
+        try {
+            input = Integer.parseInt(arg.requireValue());
+        } catch (NumberFormatException e) {
+            throw BladeParseError.fatal(String.format(
+                "'%s' is not a valid whole number.",
+                arg.value()
+            ));
+        }
+        
+        validateRange(arg, input);
+        return input;
+    }
+}
+```
+
+### Custom Provider Example
+
+Let's create a provider for a custom `GameMode` enum:
+
+```java
+public class GameModeProvider implements ArgumentProvider<GameMode> {
+    
+    @Override
+    public GameMode provide(@NotNull Context ctx, @NotNull InputArgument arg) 
+            throws BladeParseError {
+        String input = arg.requireValue().toUpperCase();
+        
+        try {
+            return GameMode.valueOf(input);
+        } catch (IllegalArgumentException e) {
+            throw BladeParseError.fatal(
+                "Invalid game mode. Use: SURVIVAL, CREATIVE, ADVENTURE, or SPECTATOR"
+            );
+        }
+    }
+    
+    @Override
+    public void suggest(@NotNull Context ctx, 
+                       @NotNull InputArgument arg,
+                       @NotNull SuggestionsBuilder suggestions) {
+        String input = arg.value() != null ? arg.value().toLowerCase() : "";
+        
+        for (GameMode mode : GameMode.values()) {
+            String name = mode.name().toLowerCase();
+            if (name.startsWith(input)) {
+                suggestions.suggest(name);
+            }
+        }
+    }
+    
+    @Override
+    public String defaultArgName(@NotNull AnnotatedElement element) {
+        return "gamemode";
+    }
+}
+```
+
+### Registering ArgumentProviders
+
+Register providers during Blade initialization:
+
+**Source:** `me/vaperion/blade/Blade.java:83-100` (built-in types)
+
+```java
+Blade blade = Blade.forPlatform(platform)
+    .bind(binder -> {
+        // Simple binding
+        binder.bind(GameMode.class, new GameModeProvider());
+        
+        // Binding with required annotations
+        binder.bind(Player.class, new OnlinePlayerProvider(), Quoted.class);
+        
+        // Unsafe binding (type erasure)
+        binder.unsafeBind(CustomType.class, new CustomProvider());
+    })
+    .build();
+```
+
+### Advanced Provider Features
+
+<Tabs>
+  <Tab title="Rich Suggestions">
+    Support Brigadier-style suggestions with tooltips and metadata.
+    
+    ```java
+    @Override
+    public void suggestRich(@NotNull Context ctx,
+                           @NotNull InputArgument arg,
+                           @NotNull RichSuggestionsBuilder suggestions) {
+        for (Enchantment ench : Enchantment.values()) {
+            suggestions.suggest(
+                ench.getKey().getKey(),
+                Component.text("Max level: " + ench.getMaxLevel())
+            );
+        }
+    }
+    ```
+  </Tab>
+  
+  <Tab title="Context-Aware Parsing">
+    Use the Context to access sender info and perform validation.
+    
+    ```java
+    @Override
+    public Player provide(@NotNull Context ctx, @NotNull InputArgument arg) 
+            throws BladeParseError {
+        String name = arg.requireValue();
+        Player target = Bukkit.getPlayer(name);
+        
+        if (target == null) {
+            throw BladeParseError.fatal("Player '" + name + "' not found.");
+        }
+        
+        // Access sender through context
+        Sender<?> sender = ctx.sender();
+        if (sender.getHandle() instanceof Player) {
+            Player senderPlayer = (Player) sender.getHandle();
+            if (!senderPlayer.canSee(target)) {
+                throw BladeParseError.fatal("Player not found.");
+            }
+        }
+        
+        return target;
+    }
+    ```
+  </Tab>
+  
+  <Tab title="Using @Data">
+    Access custom data passed via `@Data` annotation.
+    
+    ```java
+    @Override
+    public EntityType provide(@NotNull Context ctx, @NotNull InputArgument arg) 
+            throws BladeParseError {
+        List<String> data = arg.parameter().data();
+        String input = arg.requireValue().toUpperCase();
+        
+        EntityType type = EntityType.valueOf(input);
+        
+        // Filter based on @Data annotation
+        if (data.contains("HOSTILE") && !type.getEntityClass().isAssignableFrom(Monster.class)) {
+            throw BladeParseError.fatal("Must be a hostile mob");
+        }
+        
+        return type;
+    }
+    
+    @Override
+    public void suggest(@NotNull Context ctx,
+                       @NotNull InputArgument arg,
+                       @NotNull SuggestionsBuilder suggestions) {
+        List<String> data = arg.parameter().data();
+        
+        for (EntityType type : EntityType.values()) {
+            if (data.contains("HOSTILE")) {
+                if (Monster.class.isAssignableFrom(type.getEntityClass())) {
+                    suggestions.suggest(type.name().toLowerCase());
+                }
+            } else {
+                suggestions.suggest(type.name().toLowerCase());
+            }
+        }
+    }
+    ```
+    
+    **Usage:**
+    ```java
+    @Command("spawn")
+    public void spawnCommand(@Sender Player player,
+                            @Data({"HOSTILE"}) EntityType type) {
+        // Only hostile mobs can be completed/parsed
+    }
+    ```
+  </Tab>
+  
+  <Tab title="Always Parse Quotes">
+    Force quote parsing for specific types.
+    
+    ```java
+    @Override
+    public boolean alwaysParseQuotes() {
+        return true; // This provider always needs quoted input
+    }
+    ```
+  </Tab>
+  
+  <Tab title="Handle Null Input">
+    Process optional arguments even when not provided.
+    
+    ```java
+    @Override
+    public boolean handlesNullInputArguments() {
+        return true;
+    }
+    
+    @Override
+    public Player provide(@NotNull Context ctx, @NotNull InputArgument arg) 
+            throws BladeParseError {
+        if (arg.status() == InputArgument.Status.NOT_PRESENT) {
+            // Handle @Opt(Type.SENDER) logic
+            if (ctx.sender().getHandle() instanceof Player) {
+                return (Player) ctx.sender().getHandle();
+            }
+            throw BladeParseError.fatal("No player specified and sender is not a player");
+        }
+        
+        return Bukkit.getPlayer(arg.requireValue());
+    }
+    ```
+  </Tab>
+</Tabs>
+
+### Built-in Providers
+
+Blade includes providers for common types:
+
+**Source:** `me/vaperion/blade/Blade.java:84-100`
+
+- `String` - `me/vaperion/blade/argument/impl/StringArgument.java`
+- `boolean`/`Boolean` - `me/vaperion/blade/argument/impl/BooleanArgument.java`
+- `int`/`Integer` - `me/vaperion/blade/argument/impl/IntArgument.java`
+- `long`/`Long` - `me/vaperion/blade/argument/impl/LongArgument.java`
+- `double`/`Double` - `me/vaperion/blade/argument/impl/DoubleArgument.java`
+- `float`/`Float` - `me/vaperion/blade/argument/impl/FloatArgument.java`
+- `byte`/`Byte` - `me/vaperion/blade/argument/impl/ByteArgument.java`
+- `short`/`Short` - `me/vaperion/blade/argument/impl/ShortArgument.java`
+- `UUID` - `me/vaperion/blade/argument/impl/UUIDArgument.java`
+- `Enum` - `me/vaperion/blade/argument/impl/EnumArgument.java`
+
+## SenderProvider
+
+A `SenderProvider` converts the command sender into a specific type for `@Sender` parameters.
+
+**Source:** `me/vaperion/blade/sender/SenderProvider.java:16-38`
+
+### Interface Definition
+
+```java
+public interface SenderProvider<T> {
+    @Nullable
+    T provide(@NotNull Context context, @NotNull Sender<?> sender) 
+            throws BladeParseError;
+    
+    @Nullable
+    default String friendlyName(boolean plural) {
+        return null;
+    }
+}
+```
+
+### Creating a SenderProvider
+
+```java
+public class PlayerSenderProvider implements SenderProvider<Player> {
+    
+    @Override
+    public Player provide(@NotNull Context context, @NotNull Sender<?> sender) 
+            throws BladeParseError {
+        Object handle = sender.getHandle();
+        
+        if (!(handle instanceof Player)) {
+            throw BladeParseError.fatal("This command can only be used by players!");
+        }
+        
+        return (Player) handle;
+    }
+    
+    @Override
+    public String friendlyName(boolean plural) {
+        return plural ? "players" : "player";
+    }
+}
+```
+
+### Registering SenderProviders
+
+**Source:** `me/vaperion/blade/Blade.java:335-344`
+
+```java
+Blade blade = Blade.forPlatform(platform)
+    .bind(binder -> {
+        binder.bindSender(Player.class, new PlayerSenderProvider());
+        binder.bindSender(ConsoleCommandSender.class, new ConsoleSenderProvider());
+    })
+    .build();
+```
+
+### Usage in Commands
+
+```java
+@Command("heal")
+public void healCommand(@Sender Player player) {
+    // PlayerSenderProvider ensures this is a Player
+    // Throws error automatically if sender is console
+    player.setHealth(20.0);
+}
+
+@Command("stop")
+public void stopCommand(@Sender ConsoleCommandSender console) {
+    // Only console can execute this
+    console.sendMessage("Stopping server...");
+    Bukkit.shutdown();
+}
+```
+
+## Per-Parameter Provider Override
+
+Use `@Provider` annotation to override the provider for a specific parameter:
+
+**Source:** `me/vaperion/blade/annotation/parameter/Provider.java:20-65`
+
+```java
+@Command("test")
+public void testCommand(
+    @Sender Player player,
+    @Provider(CustomPlayerProvider.class) Player target
+) {
+    // 'target' uses CustomPlayerProvider instead of default
+}
+```
+
+**Scope Control:**
+```java
+// Override only parsing
+@Provider(value = CustomProvider.class, scope = Scope.PARSER)
+
+// Override only suggestions
+@Provider(value = CustomProvider.class, scope = Scope.SUGGESTIONS)
+
+// Override both (default)
+@Provider(value = CustomProvider.class, scope = Scope.BOTH)
+```
+
+## Error Handling
+
+### BladeParseError Types
+
+```java
+// Fatal error - stops command execution immediately
+throw BladeParseError.fatal("Player not found!");
+
+// Recoverable error - can be caught by @Opt(treatErrorAsEmpty = true)
+throw BladeParseError.recoverable("Invalid number format");
+```
+
+## Best Practices
+
+<Tip>
+1. Always provide clear error messages in `BladeParseError`
+2. Implement `suggest()` for better user experience
+3. Use `defaultArgName()` to provide meaningful parameter names
+4. Consider context when parsing - check permissions, world state, etc.
+5. Use `BladeParseError.recoverable()` for optional parameter errors
+6. Implement `friendlyName()` in SenderProviders for better error messages
+</Tip>
+
+<Warning>
+Providers are instantiated once and reused. Do not store mutable state in provider instances.
+</Warning>
+
+## Reference
+
+**Provider Resolution:**
+```
+me/vaperion/blade/impl/argument/ArgumentProviderResolver.java
+```
+
+**Provider Usage:**
+```
+me/vaperion/blade/command/BladeCommand.java:154-157
+```
+
+**Binder Interface:**
+```
+me/vaperion/blade/Blade.java:223-379
+```
