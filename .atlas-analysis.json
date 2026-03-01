@@ -1,0 +1,141 @@
+{
+  "projectType": "framework",
+  "projectName": "Blade",
+  "projectDescription": "An annotation-based command framework for Minecraft and Hytale platforms with multi-platform support",
+  "theme": "aspen",
+  "primaryColor": "#3B82F6",
+  "lightColor": "#60A5FA",
+  "darkColor": "#2563EB",
+  "navigation": {
+    "tabs": [
+      {
+        "tab": "Documentation",
+        "groups": [
+          {
+            "group": "Getting Started",
+            "pages": [
+              "introduction",
+              "installation",
+              "quickstart"
+            ]
+          },
+          {
+            "group": "Core Concepts",
+            "pages": [
+              "core-concepts/commands",
+              "core-concepts/annotations",
+              "core-concepts/parameters",
+              "core-concepts/providers"
+            ]
+          },
+          {
+            "group": "Platform Guides",
+            "pages": [
+              "platforms/bukkit",
+              "platforms/paper",
+              "platforms/velocity",
+              "platforms/fabric",
+              "platforms/minestom",
+              "platforms/hytale"
+            ]
+          },
+          {
+            "group": "Advanced Features",
+            "pages": [
+              "advanced/custom-argument-providers",
+              "advanced/sender-providers",
+              "advanced/permissions",
+              "advanced/brigadier",
+              "advanced/async-commands",
+              "advanced/flags"
+            ]
+          },
+          {
+            "group": "Examples",
+            "pages": [
+              "examples/basic-commands",
+              "examples/complex-commands",
+              "examples/subcommands",
+              "examples/custom-types"
+            ]
+          }
+        ]
+      },
+      {
+        "tab": "API Reference",
+        "groups": [
+          {
+            "group": "Core API",
+            "pages": [
+              "api/blade",
+              "api/blade-builder",
+              "api/blade-configuration"
+            ]
+          },
+          {
+            "group": "Annotations",
+            "pages": [
+              "api/annotations/command",
+              "api/annotations/parameter",
+              "api/annotations/validation"
+            ]
+          },
+          {
+            "group": "Providers",
+            "pages": [
+              "api/argument-provider",
+              "api/sender-provider"
+            ]
+          },
+          {
+            "group": "Context & Execution",
+            "pages": [
+              "api/context",
+              "api/input-argument",
+              "api/suggestions"
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  "keyFeatures": [
+    "Annotation-based command registration",
+    "Multi-platform support (Bukkit, Paper, Velocity, Fabric, Minestom, Hytale)",
+    "Custom argument and sender providers",
+    "Brigadier integration for rich suggestions",
+    "Command flags with short and long names",
+    "Async command execution",
+    "Permission system with custom predicates",
+    "Auto-completion support",
+    "Range validation for numeric arguments",
+    "Greedy and quoted string parsing"
+  ],
+  "publicApiSurface": [
+    "Blade.forPlatform()",
+    "Builder.config()",
+    "Builder.bind()",
+    "Builder.permission()",
+    "Blade.register()",
+    "Blade.registerPackage()",
+    "@Command",
+    "@Permission",
+    "@Description",
+    "@Async",
+    "@Hidden",
+    "@Sender",
+    "@Name",
+    "@Opt",
+    "@Flag",
+    "@Greedy",
+    "@Range",
+    "@Provider",
+    "@Quoted",
+    "ArgumentProvider<T>",
+    "SenderProvider<T>",
+    "Context",
+    "InputArgument",
+    "SuggestionsBuilder",
+    "BladeParseError"
+  ]
+}
